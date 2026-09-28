@@ -229,7 +229,10 @@ export class GameComponent implements OnInit, OnDestroy{
     // Change players
     openChangePlayersModal(): void { this.changePlayersModal.open() }
 
-    openNewEventModal(): void { this.newEventModal.open() }
+    openNewEventModal(): void {
+        this.eventOccurred.event_type = '' // no leftover choice from a closed modal
+        this.newEventModal.open()
+    }
 
     openPlayersDeploymentModal() { this.playersDeploymentModal.open() }
 
