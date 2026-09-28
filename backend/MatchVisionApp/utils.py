@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from django.conf import settings
 from sqlalchemy import create_engine
@@ -148,6 +149,13 @@ FUNDAMENTALS = ['Battuta', 'Ricezione', 'Alzata', 'Attacco', 'Muro', 'Difesa']
 GRADES = ['++', '+', '!', '—', '— —']
 
 
+def percent(part, total):
+    # Percent with one decimal, halves rounded away from zero (6.25 -> 6.3) as done by hand;
+    # pandas' round() would give 6.2 (round half to even)
+    value = part / total * 100
+    return (np.sign(value) * np.floor(value.abs() * 10 + 0.5) / 10).astype(float)
+
+
 def create_kpi_table(touches):
     """
     One row per player and fundamental, plus a 'Squadra' row per fundamental.
@@ -163,22 +171,28 @@ def create_kpi_table(touches):
         'player_id', 'player__number', 'player__name', 'player__surname', 'fundamental', 'outcome')))
     if df.empty:
         return []
+    # Nullable integers: a missing number stays missing instead of turning the column into floats
+    df['player_id'] = df['player_id'].astype('Int64')
+    df['player__number'] = df['player__number'].astype('Int64')
     df['player'] = (df['player__name'].fillna('') + ' ' + df['player__surname'].fillna('')).str.strip()
+    df.loc[df['player_id'].isna(), 'player'] = 'Senza giocatore'
 
-    # 2. Count touches per (player, fundamental) and grade: crosstab = groupby + count + pivot
-    counts = pd.crosstab(
-        index=[df['player_id'], df['player__number'], df['player'], df['fundamental']],
-        columns=df['outcome'],
-    )
+    # 2. Count touches per (player, fundamental) and grade: crosstab = groupby + count + pivot.
+    # Group on the id only (a missing id becomes -1): pandas drops groups with a missing key,
+    # so grouping on the number or the name would silently lose touches.
+    df['key'] = df['player_id'].fillna(-1)
+    counts = pd.crosstab(index=[df['key'], df['fundamental']], columns=df['outcome'])
     # Every grade becomes a column, even if nobody got it (0 instead of missing)
     counts = counts.reindex(columns=GRADES, fill_value=0).reset_index()
-    counts = counts.rename(columns={'player__number': 'number'})
+    # Put number and name back, one row per player
+    players = df.drop_duplicates('key')[['key', 'player_id', 'player__number', 'player']]
+    counts = counts.merge(players, on='key').drop(columns='key').rename(columns={'player__number': 'number'})
     counts['team'] = False
 
-    # 3. Team rows: the same counts summed over all players
-    team = counts.groupby('fundamental', as_index=False)[GRADES].sum()
-    team['player_id'] = None
-    team['number'] = None
+    # 3. Team rows, counted on every touch (also those without a player)
+    team = pd.crosstab(df['fundamental'], df['outcome']).reindex(columns=GRADES, fill_value=0).reset_index()
+    team['player_id'] = pd.array([pd.NA] * len(team), dtype='Int64')
+    team['number'] = pd.array([pd.NA] * len(team), dtype='Int64')
     team['player'] = 'Squadra'
     team['team'] = True
 
@@ -186,9 +200,9 @@ def create_kpi_table(touches):
 
     # 4. KPIs, computed on whole columns at once (vectorised)
     table['tot'] = table[GRADES].sum(axis=1)
-    table['positivita'] = ((table['++'] + table['+']) / table['tot'] * 100).round(1)
-    table['efficienza'] = ((table['++'] - table['— —']) / table['tot'] * 100).round(1)
-    table['errori'] = (table['— —'] / table['tot'] * 100).round(1)
+    table['positivita'] = percent(table['++'] + table['+'], table['tot'])
+    table['efficienza'] = percent(table['++'] - table['— —'], table['tot'])
+    table['errori'] = percent(table['— —'], table['tot'])
 
     # 5. Order: fundamental in order of play, team row last, players by shirt number
     table['order'] = table['fundamental'].map({f: i for i, f in enumerate(FUNDAMENTALS)}).fillna(len(FUNDAMENTALS))

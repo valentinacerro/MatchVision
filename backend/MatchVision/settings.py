@@ -28,7 +28,7 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-d)q0c!$)((bkm)
 DEBUG = os.environ.get('DJANGO_DEBUG', '1') == '1'
 
 # e.g. DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.20 to use the app from a tablet on the LAN
-ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,[::1]').split(',')
+ALLOWED_HOSTS = [h.strip() for h in os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,[::1]').split(',') if h.strip()]
 
 
 # Application definition
