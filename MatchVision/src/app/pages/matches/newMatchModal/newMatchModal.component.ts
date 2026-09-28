@@ -79,6 +79,7 @@ export class NewMatchModalComponent {
                 next: (res) => {
                     if (session !== this.session) return
                     this.createdMatch = res
+                    this.cdr.detectChanges()
                     console.log("Dati partita salvata", res)
                     this.loadPlayers(res, session)
                 },
