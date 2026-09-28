@@ -1,0 +1,118 @@
+.touch-pad {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    width: 19rem;
+    padding: 0.6rem;
+    border-radius: 12px;
+    background-color: white;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+}
+
+.pad-disabled .grades {
+    opacity: 0.5;
+}
+
+.pad-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.2rem;
+}
+
+.selected-player {
+    font-size: 1rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.player-number {
+    display: inline-block;
+    min-width: 2rem;
+    padding: 0 0.3rem;
+    border-radius: 1rem;
+    background-color: #0d6efd;
+    color: white;
+    text-align: center;
+    font-weight: bold;
+}
+
+.fundamentals {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.4rem;
+}
+
+.fundamental-btn {
+    min-height: 3.2rem;
+    border: 2px solid #6c757d;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.fundamental-btn.selected {
+    background-color: #212529;
+    border-color: #212529;
+    color: white;
+}
+
+.grades {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0.4rem;
+}
+
+// Big targets: this is the button tapped on every touch
+.grade-btn {
+    --grade-color: #6c757d;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 4rem;
+    padding: 0.2rem;
+    border: 2px solid var(--grade-color);
+    background-color: var(--grade-color);
+    color: white;
+    touch-action: manipulation;
+}
+
+.grade-btn:active {
+    transform: scale(0.94);
+}
+
+.grade-symbol {
+    font-size: 1.3rem;
+    font-weight: bold;
+    line-height: 1.1;
+    white-space: nowrap;
+}
+
+.grade-label {
+    font-size: 0.65rem;
+}
+
+.grade-pp { --grade-color: rgb(0, 120, 0); }
+.grade-p { --grade-color: rgb(13, 110, 253); }
+.grade-n { --grade-color: #6c757d; }
+.grade-m { --grade-color: rgb(204, 150, 0); color: black; }
+.grade-mm { --grade-color: rgb(220, 53, 69); }
+
+.hint {
+    min-height: 1.4rem;
+    font-size: 0.9rem;
+    color: #b02a37;
+    text-align: center;
+}
+
+.stats-btn {
+    font-weight: 600;
+}
+
+@media (max-width: 767px) {
+    .touch-pad {
+        width: 100%;
+    }
+}

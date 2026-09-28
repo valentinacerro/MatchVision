@@ -2,7 +2,8 @@ import { ChangeDetectorRef, Component, HostListener, OnDestroy, OnInit, ViewChil
 import { Router, RouterModule } from '@angular/router'
 
 import { ChangePlayersModalComponent } from "./changePlayersModal/changePlayersModal.component"
-import { NewTouchModalComponent } from "./newTouchModal/newTouchModal.component"
+import { TouchPadComponent } from './touchPad/touchPad.component'
+import { StatsPanelComponent } from './statsPanel/statsPanel.component'
 import { NewEventModalComponent } from './newEventModal/newEventModal.component'
 import { PlayersDeploymentModal } from './playersDeploymentModal/playersDeploymentModal.component'
 
@@ -33,7 +34,8 @@ function newClientId(): string {
     imports: [
         RouterModule,
         ChangePlayersModalComponent,
-        NewTouchModalComponent,
+        TouchPadComponent,
+        StatsPanelComponent,
         NewEventModalComponent,
         PlayersDeploymentModal
     ],
@@ -51,7 +53,7 @@ export class GameComponent implements OnInit, OnDestroy{
         private cdr: ChangeDetectorRef) {}
 
     @ViewChild(ChangePlayersModalComponent) changePlayersModal!: ChangePlayersModalComponent
-    @ViewChild(NewTouchModalComponent) newTouchModal!: NewTouchModalComponent
+    @ViewChild(StatsPanelComponent) statsPanel!: StatsPanelComponent
     @ViewChild(NewEventModalComponent) newEventModal!: NewEventModalComponent
     @ViewChild(PlayersDeploymentModal) playersDeploymentModal!: PlayersDeploymentModal
                 
@@ -226,13 +228,25 @@ export class GameComponent implements OnInit, OnDestroy{
         return !!this.globalService.currentSet()?.id
     }
 
-    // Inserting a new touch for the player
-    openNewTouchModal() {
+    // Tap on a player in the court selects it for the pad (tap again to deselect)
+    selectPlayer(player: Player): void {
         if (this.endSetClicked) {
             this.showError('locked', 'Set chiuso: premi NUOVO SET per continuare')
             return
         }
-        this.newTouchModal.open()
+        this.selectedPlayer = this.selectedPlayer?.id === player.id ? null : player
+    }
+
+    onTouchEntered(event: {fundamental: string; outcome: string}): void {
+        this.registerNewTouch(event)
+        this.selectedPlayer = null
+    }
+
+    openStats(): void { this.statsPanel.open() }
+
+    get statsSetLabel(): string {
+        const set = this.globalService.currentSet()
+        return set?.number ? `Set ${set.number}` : 'Set'
     }
 
     // Change players

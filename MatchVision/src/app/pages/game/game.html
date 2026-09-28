@@ -102,6 +102,8 @@
 
         </div>
 
+        <div class="play-area">
+
         <!-- Court -->
         <div class="court-container">
             <div class="line attack-line-guests"></div>
@@ -111,14 +113,30 @@
         <!-- Players icons -->
             @for (player of starting_players; track $index){
                 <button class="player-icon btn btn-primary position-absolute" [style.left.%]="playerPos($index)[0]" [style.top.%]="playerPos($index)[1]"
-                    (click)="this.selectedPlayer = player; openNewTouchModal()">{{ player.number }}</button>
+                    [class.selected]="selectedPlayer?.id === player.id" (click)="selectPlayer(player)">{{ player.number }}</button>
             }        
             <!-- Positioning libero -->
             @if (libero){
                 <button class="player-icon btn btn-primary position-absolute" 
                     [style.left.%]="libero_pos[index][0]" [style.top.%]="libero_pos[index][1]" 
-                        (click)="this.selectedPlayer = libero; openNewTouchModal()">{{ libero.number }}</button>}
+                    [class.selected]="selectedPlayer?.id === libero.id" (click)="selectPlayer(libero)">{{ libero.number }}</button>}
         </div>
+
+        <!-- Always-visible input: player (court) -> fundamental -> grade -->
+        <app-touch-pad
+            [player]="selectedPlayer"
+            [disabled]="endSetClicked || !hasActiveSet"
+            (touchEntered)="onTouchEntered($event)"
+            (statsRequested)="openStats()">
+        </app-touch-pad>
+
+        </div>
+
+        <app-stats-panel
+            [matchId]="globalService.currentMatch()?.id ?? null"
+            [setId]="globalService.currentSet()?.id ?? null"
+            [setLabel]="statsSetLabel">
+        </app-stats-panel>
 
         <!-- Modal for players changes -->
         <app-change-players-modal 
@@ -130,12 +148,6 @@
             (changeOccurred)="changeCounter > 0 ? changeCounter = changeCounter - 1 : changeCounter"
             (doubleChangeOccurred)="doubleChangeCounter > 0 ? doubleChangeCounter = doubleChangeCounter - 1 : doubleChangeCounter">
         </app-change-players-modal>
-
-        <!-- Modal for a new touch -->
-        <app-new-touch-modal
-            [player]="selectedPlayer"
-            (newTouchCreated)="registerNewTouch($event)">
-        </app-new-touch-modal>
 
         <!-- Modal for a new event -->
         <app-new-event-modal

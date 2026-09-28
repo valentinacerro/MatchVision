@@ -1,0 +1,36 @@
+<div class="touch-pad" [class.pad-disabled]="disabled">
+
+    <div class="pad-header">
+        <div class="selected-player">
+            @if (player) {
+                <span class="player-number">{{ player.number }}</span> {{ player.name }} {{ player.surname }}
+            } @else {
+                <span class="text-muted">Nessun giocatore</span>
+            }
+        </div>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Profilo">
+            <button type="button" class="btn" [class.btn-dark]="profile === 'solo'" [class.btn-outline-dark]="profile !== 'solo'"
+                (click)="setProfile('solo')">Solo</button>
+            <button type="button" class="btn" [class.btn-dark]="profile === 'completo'" [class.btn-outline-dark]="profile !== 'completo'"
+                (click)="setProfile('completo')">Completo</button>
+        </div>
+    </div>
+
+    <div class="fundamentals">
+        @for (f of fundamentals; track f) {
+            <button type="button" class="btn fundamental-btn" [class.selected]="fundamental === f" (click)="selectFundamental(f)">{{ f }}</button>
+        }
+    </div>
+
+    <div class="grades">
+        @for (g of grades; track g.value) {
+            <button type="button" class="btn grade-btn {{ g.css }}" [disabled]="disabled" (click)="selectGrade(g.value)">
+                <span class="grade-symbol">{{ g.value }}</span><span class="grade-label">{{ g.label }}</span>
+            </button>
+        }
+    </div>
+
+    <div class="hint" role="status">{{ disabled ? 'Set chiuso o non attivo' : hint }}</div>
+
+    <button type="button" class="btn btn-outline-primary stats-btn" (click)="statsRequested.emit()">STATISTICHE</button>
+</div>
