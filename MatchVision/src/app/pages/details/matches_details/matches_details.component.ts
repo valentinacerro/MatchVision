@@ -71,6 +71,7 @@ export class MatchesDetailsComponent implements OnInit{
                     next: (df) => {
                         this.df_match = df
                         console.log("Match stats caricate correttamente")
+                        this.cdr.detectChanges()
                     }, 
                     error: (err) => console.error("Errore caricamento statistiche match", err)
                 })
@@ -144,6 +145,7 @@ export class MatchesDetailsComponent implements OnInit{
         this.statsService.getMatchStats(matchId).subscribe(data => {
             this.df_match = data
             this.df_match_text = this.generateCSV(data)
+            this.cdr.detectChanges()
         })
     }
     
@@ -153,6 +155,7 @@ export class MatchesDetailsComponent implements OnInit{
                 next: (data) => {
                     this.df_sets[index] = data
                     this.df_sets_text[index] = this.generateCSV(data)
+                    this.cdr.detectChanges()
                 },
                 error: (err) => console.error('Errore caricamento setStats', err)
             })
@@ -173,6 +176,7 @@ export class MatchesDetailsComponent implements OnInit{
                     next: (df) => {
                         this.df_set_players[pIndex][sIndex] = df
                         this.df_set_players_text[pIndex][sIndex] = this.generateCSV(df)
+                        this.cdr.detectChanges()
                     },
                     error: (err) => console.error('Errore caricamento setPlayersStats', err)
                 })
