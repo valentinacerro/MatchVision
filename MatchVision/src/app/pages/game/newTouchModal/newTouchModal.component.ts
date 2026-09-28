@@ -32,14 +32,16 @@ export class NewTouchModalComponent{
         this.modalRef = this.modalService.open(this.content, { ariaLabelledBy: 'modal-new-touch' })
 	}
 
-    // The touch is saved as soon as both fundamental and outcome are chosen
+    // The touch is saved as soon as both fundamental and outcome are chosen.
+    // One save per open: taps during the closing animation are ignored.
     trySubmit(): void {
-        if (this.fundamental === '' || this.outcome === '') return
+        if (!this.modalRef || this.fundamental === '' || this.outcome === '') return
+        const ref = this.modalRef
+        this.modalRef = null
         this.newTouchCreated.emit({
             fundamental: this.fundamental,
             outcome: this.outcome
         })
-        this.modalRef?.close()
-        this.modalRef = null
+        ref.close()
     }
 }
