@@ -69,9 +69,9 @@
 
                 <div class="last-touch d-flex justify-content-center align-items-center row col-6">
                     @if(touches.length > 0){
-                        <div class="offset-1 col-8 del-last-touch-text">Ultimo tocco: <strong>{{ this.last_touch_fundamental }}</strong></div>
-                        <div class="col-3"><img class="del-touch-img" src="/icons/del-last-action-icon.png" alt="Annulla l'ultimo tocco"
-                            (click)="cancelLastTouch(last_touch_id)"></div>
+                        <div class="offset-1 col-8 del-last-touch-text">Ultimo tocco: <strong>{{ lastTouchText }}</strong></div>
+                        <div class="col-3"><button type="button" class="del-touch-btn" [disabled]="!canUndo" (click)="undoLastTouch()">
+                            <img class="del-touch-img" src="/icons/del-last-action-icon.png" alt="Annulla l'ultimo tocco"></button></div>
                     }
                 </div>
 
@@ -116,7 +116,7 @@
         <!-- Modal for a new touch -->
         <app-new-touch-modal
             [player]="selectedPlayer"
-            (newTouchCreated)="registerNewTouch($event); last_touch_fundamental = $event.fundamental">
+            (newTouchCreated)="registerNewTouch($event)">
         </app-new-touch-modal>
 
         <!-- Modal for a new event -->

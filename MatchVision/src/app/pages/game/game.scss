@@ -164,8 +164,16 @@ body {
     border-radius: 7px;
 }
 
-.del-touch-img:hover {
+.del-touch-btn {
+    padding: 0;
+    border: none;
+    background: none;
     cursor: pointer;
+}
+
+.del-touch-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
 }
 
 .del-last-touch-text {

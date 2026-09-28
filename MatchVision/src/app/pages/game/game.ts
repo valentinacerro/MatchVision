@@ -80,8 +80,9 @@ export class GameComponent implements OnInit{
         outcome: "" 
     }
     touches: Touch[] = []
-    last_touch_fundamental: string | undefined = ''
-    last_touch_id: number | undefined = -1
+    pendingSaves: number = 0 // touches sent but not confirmed yet
+    pendingDeletes: number = 0
+    rallyStartIndex: number = 0 // first touch after the last point
 
     // all players
     players: Player[] = []
@@ -120,9 +121,27 @@ export class GameComponent implements OnInit{
         this.startNewSet()
     }
 
-    increaseScore(team: 'home' | 'guests') { this.score[team]++ }
+    // A score change closes the rally in progress
+    increaseScore(team: 'home' | 'guests') {
+        this.score[team]++
+        this.rallyStartIndex = this.touches.length
+    }
 
-    decreaseScore(team: 'home' | 'guests') { if (this.score[team] > 0) this.score[team]-- }
+    decreaseScore(team: 'home' | 'guests') {
+        if (this.score[team] > 0) this.score[team]--
+        this.rallyStartIndex = this.touches.length
+    }
+
+    get lastTouchText(): string {
+        const last = this.touches.at(-1)
+        if (!last) return ''
+        const player = [...this.players, ...this.starting_players].find(p => p.id === last.player)
+        return `${player ? '#' + player.number + ' ' : ''}${last.fundamental} ${last.outcome}`
+    }
+
+    get canUndo(): boolean {
+        return this.touches.length > 0 && this.pendingSaves === 0 && this.pendingDeletes === 0
+    }
 
 
     // Inserting a new touch for the player
@@ -159,37 +178,45 @@ export class GameComponent implements OnInit{
                 this.r_card_counter++
                 break
             case EventType.DOUBLE_FAULT:
-                this.cancelLastAction()
+                this.cancelCurrentRally()
                 break
         }
         this.eventOccurred = {event_type: ''}
     }
-    
-    cancelLastAction(): void {
-        for (let i = this.touches.length - 1; i >= 0; i--) {
-            if (this.touches[i].fundamental === 'Battuta'){
-                this.cancelLastTouch(this.touches[i].id)
-                break
-            }
-            this.cancelLastTouch(this.touches[i].id)
+
+    // Replayed point: delete only the touches of the rally in progress
+    cancelCurrentRally(): void {
+        if (this.pendingSaves > 0 || this.pendingDeletes > 0) {
+            console.log('Operazione in corso, riprova tra un attimo')
+            return
         }
+        const rallyTouches = this.touches.slice(Math.min(this.rallyStartIndex, this.touches.length))
+        if (rallyTouches.length === 0) return
+        if (!confirm(`Palla contesa: annullare i ${rallyTouches.length} tocchi del rally in corso?`)) return
+        rallyTouches.forEach(t => this.deleteTouch(t))
     }
 
     // Delete last touch
-    cancelLastTouch(id: number | undefined): void {
-        this.touchesService.deleteTouch(id).subscribe({
+    undoLastTouch(): void {
+        const last = this.touches.at(-1)
+        if (last && this.canUndo) this.deleteTouch(last)
+    }
+
+    deleteTouch(touch: Touch): void {
+        this.pendingDeletes++
+        this.touchesService.deleteTouch(touch.id).subscribe({
             next: () => {
-                if(this.touches.length > 0){
-                    this.touches.pop()
-                    console.log('Ultimo tocco eliminato')
-                    if(this.touches.length > 0){
-                        this.last_touch_fundamental = this.touches.at(-1)?.fundamental
-                        this.last_touch_id = this.touches.at(-1)?.id
-                    }
-                    this.cdr.detectChanges()
-                }
+                this.pendingDeletes--
+                this.touches = this.touches.filter(t => t.id !== touch.id)
+                this.rallyStartIndex = Math.min(this.rallyStartIndex, this.touches.length)
+                console.log('Tocco eliminato', touch.id)
+                this.cdr.detectChanges()
             },
-            error: (err) => console.error('Errore eliminazione ultimo tocco', err)
+            error: (err) => {
+                this.pendingDeletes--
+                console.error('Errore eliminazione tocco', err)
+                this.cdr.detectChanges()
+            }
         })
     }
 
@@ -208,15 +235,19 @@ export class GameComponent implements OnInit{
         this.newTouch.outcome = event.outcome
         // if form is valid
         if((this.newTouch.fundamental != "") && (this.newTouch.outcome != "")) {
+            this.pendingSaves++
             this.touchesService.createTouch(this.newTouch).subscribe({
                 next: (res) => {
                     console.log(res)
-                    this.last_touch_fundamental = res.fundamental
-                    this.last_touch_id = res.id
+                    this.pendingSaves--
                     this.touches.push(res)
                     this.cdr.detectChanges()
                 },
-                error: (err) => console.error('Errore salvataggio nuovo tocco', err)
+                error: (err) => {
+                    this.pendingSaves--
+                    console.error('Errore salvataggio nuovo tocco', err)
+                    this.cdr.detectChanges()
+                }
             });
             this.newTouch = {id: -1, set: -1, player: -1, fundamental: '', outcome: ''}
         }
@@ -294,6 +325,7 @@ export class GameComponent implements OnInit{
         this.bench_players  = []
 
         this.touches = []
+        this.rallyStartIndex = 0
         this.score.guests = 0
         this.score.home = 0
         this.rotation = 0
