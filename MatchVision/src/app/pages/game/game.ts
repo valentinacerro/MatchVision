@@ -234,10 +234,23 @@ export class GameComponent implements OnInit, OnDestroy{
             this.showError('locked', 'Set chiuso: premi NUOVO SET per continuare')
             return
         }
-        this.selectedPlayer = this.selectedPlayer?.id === player.id ? null : player
+        this.selectedPlayer = this.selectedOnCourt?.id === player.id ? null : player
+    }
+
+    // The selection counts only while that player is on court: a substitution, a libero swap,
+    // a new lineup or a new set make it void
+    get selectedOnCourt(): Player | null {
+        const p = this.selectedPlayer
+        if (!p) return null
+        return this.starting_players.some(s => s.id === p.id) || this.libero?.id === p.id ? p : null
     }
 
     onTouchEntered(event: {fundamental: string; outcome: string}): void {
+        if (!this.selectedOnCourt) {
+            this.selectedPlayer = null
+            this.showError('touch', 'Tocca prima un giocatore in campo')
+            return
+        }
         this.registerNewTouch(event)
         this.selectedPlayer = null
     }
@@ -453,6 +466,7 @@ export class GameComponent implements OnInit, OnDestroy{
     }
 
     assignPlayers(event: any) {
+        this.selectedPlayer = null
         this.starting_players = event.startingPlayers
         this.libero = event.libero
         this.bench_players = event.benchPlayers
@@ -520,6 +534,7 @@ export class GameComponent implements OnInit, OnDestroy{
     }
 
     resetVariables() {
+        this.selectedPlayer = null
 
         this.starting_players = []
         this.libero = null

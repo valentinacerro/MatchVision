@@ -113,18 +113,18 @@
         <!-- Players icons -->
             @for (player of starting_players; track $index){
                 <button class="player-icon btn btn-primary position-absolute" [style.left.%]="playerPos($index)[0]" [style.top.%]="playerPos($index)[1]"
-                    [class.selected]="selectedPlayer?.id === player.id" (click)="selectPlayer(player)">{{ player.number }}</button>
+                    [class.selected]="selectedOnCourt?.id === player.id" (click)="selectPlayer(player)">{{ player.number }}</button>
             }        
             <!-- Positioning libero -->
             @if (libero){
                 <button class="player-icon btn btn-primary position-absolute" 
                     [style.left.%]="libero_pos[index][0]" [style.top.%]="libero_pos[index][1]" 
-                    [class.selected]="selectedPlayer?.id === libero.id" (click)="selectPlayer(libero)">{{ libero.number }}</button>}
+                    [class.selected]="selectedOnCourt?.id === libero.id" (click)="selectPlayer(libero)">{{ libero.number }}</button>}
         </div>
 
         <!-- Always-visible input: player (court) -> fundamental -> grade -->
         <app-touch-pad
-            [player]="selectedPlayer"
+            [player]="selectedOnCourt"
             [disabled]="endSetClicked || !hasActiveSet"
             (touchEntered)="onTouchEntered($event)"
             (statsRequested)="openStats()">

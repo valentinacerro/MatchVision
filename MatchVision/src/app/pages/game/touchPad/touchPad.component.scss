@@ -46,16 +46,26 @@
 }
 
 .fundamental-btn {
+    // Bootstrap variables, so hover/pressed states keep these colours
+    --bs-btn-border-width: 2px;
+    --bs-btn-border-color: #6c757d;
+    --bs-btn-hover-border-color: #6c757d;
+    --bs-btn-active-border-color: #6c757d;
+    --bs-btn-active-bg: #e9ecef;
     min-height: 3.2rem;
-    border: 2px solid #6c757d;
     font-size: 1rem;
     font-weight: 600;
 }
 
 .fundamental-btn.selected {
-    background-color: #212529;
-    border-color: #212529;
-    color: white;
+    --bs-btn-bg: #212529;
+    --bs-btn-color: white;
+    --bs-btn-border-color: #212529;
+    --bs-btn-hover-bg: #212529;
+    --bs-btn-hover-color: white;
+    --bs-btn-active-bg: #212529;
+    --bs-btn-active-color: white;
+    --bs-btn-active-border-color: #212529;
 }
 
 .grades {
@@ -71,11 +81,22 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    --grade-text: white;
+    --bs-btn-border-width: 2px;
+    --bs-btn-bg: var(--grade-color);
+    --bs-btn-border-color: var(--grade-color);
+    --bs-btn-color: var(--grade-text);
+    --bs-btn-hover-bg: var(--grade-color);
+    --bs-btn-hover-border-color: var(--grade-color);
+    --bs-btn-hover-color: var(--grade-text);
+    --bs-btn-active-bg: var(--grade-color);
+    --bs-btn-active-border-color: black;
+    --bs-btn-active-color: var(--grade-text);
+    --bs-btn-disabled-bg: var(--grade-color);
+    --bs-btn-disabled-border-color: var(--grade-color);
+    --bs-btn-disabled-color: var(--grade-text);
     min-height: 4rem;
     padding: 0.2rem;
-    border: 2px solid var(--grade-color);
-    background-color: var(--grade-color);
-    color: white;
     touch-action: manipulation;
 }
 
@@ -97,7 +118,7 @@
 .grade-pp { --grade-color: rgb(0, 120, 0); }
 .grade-p { --grade-color: rgb(13, 110, 253); }
 .grade-n { --grade-color: #6c757d; }
-.grade-m { --grade-color: rgb(204, 150, 0); color: black; }
+.grade-m { --grade-color: rgb(204, 150, 0); --grade-text: black; }
 .grade-mm { --grade-color: rgb(220, 53, 69); }
 
 .hint {
