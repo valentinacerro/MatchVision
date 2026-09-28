@@ -7,10 +7,29 @@
     vertical-align: middle;
 }
 
-.confirm-btn{
-    background-color: rgba(0, 128, 0, 0.478);
+.hint{
+    font-size: 0.9rem;
+    color: #666;
 }
-.confirm-btn:hover{
+
+// Outcome buttons: light tint when idle, solid fill + thick outline when selected
+.grade{
+    --grade-color: #6c757d;
+    min-width: 6rem;
+    font-weight: bold;
+    border: 2px solid var(--grade-color);
+    background-color: white;
+    background-color: color-mix(in srgb, var(--grade-color) 25%, white);
+}
+.btn-check:checked + .grade{
+    background-color: var(--grade-color);
     color: white;
-    transition: 0.2s;
+    outline: 4px solid black;
+    outline-offset: -4px;
 }
+
+.grade-pp{ --grade-color: rgb(0, 150, 0); }
+.grade-p{ --grade-color: rgb(13, 110, 253); }
+.grade-n{ --grade-color: #6c757d; }
+.grade-m{ --grade-color: rgb(204, 150, 0); }
+.grade-mm{ --grade-color: rgb(220, 53, 69); }
