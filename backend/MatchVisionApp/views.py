@@ -8,7 +8,7 @@ from .models import Player, Team, Match, Set, Touch
 from .serializers import SetUpdateSerializer, MatchUpdateSerializer, PlayerSerializer, TeamSerializer, MatchSerializer, SetSerializer, TouchSerializer, EventSerializer, UserSerializer
 
 import pandas as pd
-from .utils import create_table_match_stats, create_table_set_stats, create_table_set_player
+from .utils import create_table_match_stats, create_table_set_stats, create_table_set_player, create_kpi_table
 
 # USER
 # create user
@@ -338,3 +338,13 @@ def getSetPlayerStats(request, set_id, player_id):
     
 #     # Return the list of dictionaries as a JSON response
 #     return JsonResponse(data_list, safe=False)
+
+
+# KPI (numbers) per player and fundamental
+@api_view(['GET'])
+def getMatchKpi(request, pk):
+    return Response(create_kpi_table(Touch.objects.filter(set__match_id=pk)))
+
+@api_view(['GET'])
+def getSetKpi(request, pk):
+    return Response(create_kpi_table(Touch.objects.filter(set_id=pk)))

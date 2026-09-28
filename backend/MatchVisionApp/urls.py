@@ -51,4 +51,7 @@ urlpatterns = [
     path('match_details/sets/<int:pk>/stats/', views.getSetsStats),
     path('match_details/sets/<int:set_id>/player/<int:player_id>/stats/', views.getSetPlayerStats),
 
+    path('match_details/<int:pk>/kpi/', views.getMatchKpi),
+    path('match_details/sets/<int:pk>/kpi/', views.getSetKpi),
+
 ]
