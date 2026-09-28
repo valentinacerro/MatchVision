@@ -23,6 +23,23 @@
                     <label class="btn btn-outline-secondary text-start" for="team-{{team.id}}">{{ team.name }}</label>
                 }
             </div>
+
+            <div class="subtitle"><h5>Formato</h5></div>
+            <div class="d-flex flex-wrap gap-2">
+                <div class="btn-group" role="group" aria-label="Set per vincere">
+                    <input type="radio" class="btn-check" id="best-of-5" name="sets-to-win" [value]="3" [(ngModel)]="newMatch.sets_to_win" />
+                    <label class="btn btn-outline-secondary" for="best-of-5">3 set vinti</label>
+                    <input type="radio" class="btn-check" id="best-of-3" name="sets-to-win" [value]="2" [(ngModel)]="newMatch.sets_to_win" />
+                    <label class="btn btn-outline-secondary" for="best-of-3">2 set vinti</label>
+                </div>
+                <div class="btn-group" role="group" aria-label="Punti per set">
+                    <input type="radio" class="btn-check" id="set-25" name="set-points" [value]="25" [(ngModel)]="newMatch.set_points" />
+                    <label class="btn btn-outline-secondary" for="set-25">Set a 25</label>
+                    <input type="radio" class="btn-check" id="set-21" name="set-points" [value]="21" [(ngModel)]="newMatch.set_points" />
+                    <label class="btn btn-outline-secondary" for="set-21">Set a 21</label>
+                </div>
+            </div>
+            <div class="form-text">Tie-break a 15, con 2 punti di scarto</div>
         </fieldset>          
 
         @if (errorMessage) {

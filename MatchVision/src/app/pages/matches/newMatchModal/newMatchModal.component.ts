@@ -29,12 +29,11 @@ export class NewMatchModalComponent {
     private modalService = inject(NgbModal);
     public closeResult: WritableSignal<string> = signal('');
 
-    newMatch: Match = {
-        id: 0,
-        name: '',
-        team_id: 0,
-        timestamp: new Date(),
-        result: null
+    newMatch: Match = this.emptyMatch()
+
+    private emptyMatch(): Match {
+        // Default format: best of 5, sets to 25, tie-break to 15
+        return { id: 0, name: '', team_id: 0, timestamp: new Date(), result: null, sets_to_win: 3, set_points: 25, tiebreak_points: 15 }
     }
 
     matchInfoSaved: boolean = false
@@ -49,7 +48,7 @@ export class NewMatchModalComponent {
 
     // To open the modal
     public open() {
-        this.newMatch = { id: 0, name: '', team_id: 0, timestamp: new Date(), result: null };
+        this.newMatch = this.emptyMatch()
         this.matchInfoSaved = false
         this.saving = false
         this.errorMessage = ''
