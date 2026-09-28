@@ -75,7 +75,7 @@ class TouchSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Touch
-        fields = ['id', 'set', 'player', 'fundamental', 'outcome']
+        fields = ['id', 'set', 'player', 'fundamental', 'outcome', 'client_id']
 
 
 # --- EVENT ---

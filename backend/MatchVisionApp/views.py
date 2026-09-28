@@ -207,6 +207,12 @@ def createEvent(request):
 # create new touch
 @api_view(['POST'])
 def createTouch(request):
+    # A retry of a touch already saved returns it instead of creating a duplicate
+    client_id = request.data.get('client_id')
+    if client_id:
+        existing = Touch.objects.filter(client_id=client_id).first()
+        if existing:
+            return Response(TouchSerializer(existing).data, status=status.HTTP_200_OK)
     serializer = TouchSerializer(data = request.data)
     if serializer.is_valid():
         serializer.save()
