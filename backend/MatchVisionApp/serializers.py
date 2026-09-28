@@ -77,7 +77,7 @@ class TouchSerializer(serializers.ModelSerializer):
         model = Touch
         fields = ['id', 'set', 'player', 'fundamental', 'outcome', 'client_id']
         # Duplicates are handled in the view, which returns the touch already saved
-        extra_kwargs = {'client_id': {'validators': []}}
+        extra_kwargs = {'client_id': {'validators': [], 'allow_blank': False}}
 
 
 # --- EVENT ---

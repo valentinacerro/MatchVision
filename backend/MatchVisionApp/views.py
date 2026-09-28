@@ -221,9 +221,10 @@ def createTouch(request):
                 serializer.save()
         except IntegrityError:
             # The same client_id arrived twice at the same time: the other request saved it
-            existing = Touch.objects.filter(client_id=client_id).first()
-            if not client_id or not existing:
-                raise
+            cid = serializer.validated_data.get('client_id')
+            existing = Touch.objects.filter(client_id=cid).first() if cid else None
+            if not existing:
+                return Response({"error": "Tocco non valido"}, status=status.HTTP_400_BAD_REQUEST)
             return Response(TouchSerializer(existing).data, status=status.HTTP_200_OK)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
