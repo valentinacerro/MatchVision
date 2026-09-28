@@ -1,5 +1,5 @@
 import { ChangeDetectorRef, Component, OnInit, ViewChild } from '@angular/core'
-import { RouterModule } from '@angular/router'
+import { Router, RouterModule } from '@angular/router'
 
 import { ChangePlayersModalComponent } from "./changePlayersModal/changePlayersModal.component"
 import { NewTouchModalComponent } from "./newTouchModal/newTouchModal.component"
@@ -36,6 +36,7 @@ export class GameComponent implements OnInit{
         private setsService: SetsService,
         private matchesService: MatchesService,
         public globalService: GlobalService,
+        private router: Router,
         private cdr: ChangeDetectorRef) {}
 
     @ViewChild(ChangePlayersModalComponent) changePlayersModal!: ChangePlayersModalComponent
@@ -110,10 +111,14 @@ export class GameComponent implements OnInit{
     newSet!: Set
     setNumber: number = 1
     endSetClicked: boolean = false
+    endingSet: boolean = false
+    creatingSet: boolean = false
+    allSetsPlayed: boolean = false
     
     // To save match
     results: { home_score: number; guest_score: number }[] = []
     isEndOfMatch: boolean = false
+    endingMatch: boolean = false
     
     ngOnInit(): void {
         this.players = this.globalService.currentPlayers()
@@ -308,16 +313,22 @@ export class GameComponent implements OnInit{
     createSet(set: Set) {
         
         if((this.score.home === 0 && this.score.guests === 0) && this.setNumber != 1){  
+            this.showError('Il set precedente è finito 0-0: nuovo set non creato')
             return
-        }else{  
+        }else if (!this.creatingSet){  
+            this.creatingSet = true
             this.setsService.createSet(this.newSet).subscribe({
                 next: (res) => {
+                    this.creatingSet = false
                     this.globalService.currentSet.set(res);
                     this.cdr.detectChanges()
                     console.log(res)
                     this.resetVariables()
                 },
-                error: (err) => this.showError('Set non creato: riprova', err)
+                error: (err) => {
+                    this.creatingSet = false
+                    this.showError('Set non creato: riprova', err)
+                }
             }); 
         }
     }
@@ -350,7 +361,15 @@ export class GameComponent implements OnInit{
     handleNextSet() {
         if (this.setNumber < 5) {
             this.setNumber = this.setNumber + 1
-        } else {return}
+        } else {
+            this.allSetsPlayed = true
+        }
+        this.cdr.detectChanges()
+    }
+
+    confirmEndSet() {
+        if (!confirm(`Chiudere il set ${this.setNumber} sul ${this.score.home}-${this.score.guests}?`)) return
+        this.endSet()
     }
 
     endSet() {
@@ -365,18 +384,22 @@ export class GameComponent implements OnInit{
             home_score: this.score.home,
             guest_score: this.score.guests
         }
-        if (!this.isEndOfMatch){
-            this.results = [...this.results, updatedScores]
-        }
-        this.cdr.detectChanges()
-
+        this.endingSet = true
         this.setsService.updateSet(currentSet.id, updatedScores).subscribe({
             next: (res) => {
                 console.log("Set aggiornato con i punteggi:", res)
-                    if(!this.isEndOfMatch)
-                        this.handleNextSet()
+                this.endingSet = false
+                if(!this.isEndOfMatch){
+                    // Recorded only once the server has it, so a retry does not duplicate it
+                    this.results = [...this.results, updatedScores]
+                    this.endSetClicked = true
+                    this.handleNextSet()
+                }
             },
-            error: (err) => this.showError('Punteggio del set non salvato: riprova', err)
+            error: (err) => {
+                this.endingSet = false
+                this.showError('Punteggio del set non salvato: riprova', err)
+            }
         });
     }
 
@@ -387,17 +410,26 @@ export class GameComponent implements OnInit{
         else
         this.matchesService.updateMatch(match.id, { results: results }).subscribe({
             next: (res) => {
-                this.globalService.currentMatch.set(res)
-                this.cdr.detectChanges()
-                console.log("Risultati aggiornati:", res.result)
+                console.log("Risultati aggiornati:", res)
                 this.globalService.resetAll()
+                this.router.navigate(['/'])
             },
-            error: (err) => this.showError('Risultati della partita non salvati: riprova', err)
+            error: (err) => {
+                this.isEndOfMatch = false
+                this.endingMatch = false
+                this.showError('Risultati della partita non salvati: riprova', err)
+            }
     })
     }
 
+    confirmEndMatch() {
+        if (!confirm('Terminare la partita? Non potrai più registrare tocchi.')) return
+        this.endMatch()
+    }
+
     endMatch() {
-        this.isEndOfMatch = !this.isEndOfMatch
+        this.isEndOfMatch = true
+        this.endingMatch = true
         this.endSet()
         this.updateMatchResults(this.results)
     }

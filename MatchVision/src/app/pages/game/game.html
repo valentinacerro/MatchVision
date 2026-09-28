@@ -147,9 +147,9 @@
             <button (click)="doRotation()" class="btn btn-outline-light btn-lg">ROTAZIONE</button>
         
             <button (click)="togglePos()" class="btn btn-outline-light btn-lg">CAMBIO CAMPO</button>
-            <button (click)="endSet(); endSetClicked = !endSetClicked" [disabled]="endSetClicked" class="btn btn-outline-light btn-lg">FINE SET</button>
-            <button (click)="startNewSet()" class="btn btn-outline-light btn-lg" [disabled]="!endSetClicked">NUOVO SET</button>
-            <button [disabled]="!endSetClicked" (click)="endMatch()" [routerLink]="['/']" class="btn btn-outline-light btn-lg">FINE MATCH</button>
+            <button (click)="confirmEndSet()" [disabled]="endSetClicked || endingSet" class="btn btn-outline-light btn-lg">FINE SET</button>
+            <button (click)="startNewSet()" class="btn btn-outline-light btn-lg" [disabled]="!endSetClicked || allSetsPlayed || creatingSet">NUOVO SET</button>
+            <button [disabled]="!endSetClicked || endingMatch" (click)="confirmEndMatch()" class="btn btn-outline-light btn-lg">FINE MATCH</button>
         </div>
 
 
