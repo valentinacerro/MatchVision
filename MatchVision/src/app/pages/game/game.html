@@ -31,8 +31,8 @@
             <div class="row col">  
             
                 <div class="manage-score d-flex justify-content-center align-items-center col">CASA
-                    <button class="btn btn-secondary mx-1" (click)="decreaseScore('home')">—</button>
-                    <button class="btn btn-secondary mx-1" (click)="increaseScore('home')">+</button>
+                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked" (click)="decreaseScore('home')">—</button>
+                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked" (click)="increaseScore('home')">+</button>
                 </div>
 
 
@@ -94,8 +94,8 @@
                 </div>
 
                 <div class="manage-score d-flex justify-content-center align-items-center col">OSPITI
-                    <button class="btn btn-secondary mx-1" (click)="decreaseScore('guests')">—</button>
-                    <button class="btn btn-secondary mx-1" (click)="increaseScore('guests')">+</button> 
+                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked" (click)="decreaseScore('guests')">—</button>
+                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked" (click)="increaseScore('guests')">+</button> 
                 </div>
 
             </div>
@@ -158,8 +158,8 @@
             <button (click)="doRotation()" class="btn btn-outline-light btn-lg">ROTAZIONE</button>
         
             <button (click)="togglePos()" class="btn btn-outline-light btn-lg">CAMBIO CAMPO</button>
-            <button (click)="confirmEndSet()" [disabled]="endSetClicked || endingSet" class="btn btn-outline-light btn-lg">FINE SET</button>
-            <button (click)="startNewSet()" class="btn btn-outline-light btn-lg" [disabled]="!endSetClicked || allSetsPlayed || creatingSet">NUOVO SET</button>
+            <button (click)="confirmEndSet()" [disabled]="endSetClicked || endingSet || !hasActiveSet" class="btn btn-outline-light btn-lg">FINE SET</button>
+            <button (click)="startNewSet()" class="btn btn-outline-light btn-lg" [disabled]="(!endSetClicked && hasActiveSet) || allSetsPlayed || creatingSet">NUOVO SET</button>
             <button [disabled]="!endSetClicked || endingMatch" (click)="confirmEndMatch()" class="btn btn-outline-light btn-lg">FINE MATCH</button>
         </div>
 

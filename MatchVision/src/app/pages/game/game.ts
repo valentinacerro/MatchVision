@@ -125,7 +125,6 @@ export class GameComponent implements OnInit{
     
     // To save match
     results: { home_score: number; guest_score: number }[] = []
-    isEndOfMatch: boolean = false
     endingMatch: boolean = false
     
     ngOnInit(): void {
@@ -209,8 +208,18 @@ export class GameComponent implements OnInit{
     }
 
 
+    get hasActiveSet(): boolean {
+        return !!this.globalService.currentSet()?.id
+    }
+
     // Inserting a new touch for the player
-    openNewTouchModal() { this.newTouchModal.open() }
+    openNewTouchModal() {
+        if (this.endSetClicked) {
+            this.showError('touch', 'Set chiuso: premi NUOVO SET per continuare')
+            return
+        }
+        this.newTouchModal.open()
+    }
 
     // Change players
     openChangePlayersModal(): void { this.changePlayersModal.open() }
@@ -295,7 +304,7 @@ export class GameComponent implements OnInit{
     // Create new touch
     registerNewTouch(event: {fundamental: string; outcome: string}): void {
         const currentSet = this.globalService.currentSet()
-        if(!currentSet || !currentSet.id) {
+        if(!currentSet || !currentSet.id || this.endSetClicked) {
             this.showError('touch', 'Nessun set attivo: tocco non registrato')
             return
         }
@@ -400,6 +409,7 @@ export class GameComponent implements OnInit{
             return
         }else if (!this.creatingSet){  
             this.creatingSet = true
+            this.globalService.currentSet.set(null) // no touch can go to the old set meanwhile
             this.setsService.createSet(this.newSet).subscribe({
                 next: (res) => {
                     this.creatingSet = false
@@ -436,7 +446,6 @@ export class GameComponent implements OnInit{
         this.y_card_counter = 0
         this.r_card_counter = 0
 
-        this.isEndOfMatch = false
         this.endSetClicked = false
 
         this.cdr.detectChanges()
@@ -452,6 +461,10 @@ export class GameComponent implements OnInit{
     }
 
     confirmEndSet() {
+        if (this.score.home === 0 && this.score.guests === 0) {
+            this.showError('set', 'Punteggio 0-0: aggiorna il punteggio prima di chiudere il set')
+            return
+        }
         if (!confirm(`Chiudere il set ${this.setNumber} sul ${this.score.home}-${this.score.guests}?`)) return
         this.endSet()
     }
@@ -474,12 +487,10 @@ export class GameComponent implements OnInit{
                 console.log("Set aggiornato con i punteggi:", res)
                 this.endingSet = false
                 this.clearError('set')
-                if(!this.isEndOfMatch){
-                    // Recorded only once the server has it, so a retry does not duplicate it
-                    this.results = [...this.results, updatedScores]
-                    this.endSetClicked = true
-                    this.handleNextSet()
-                }
+                // Recorded only once the server has it, so a retry does not duplicate it
+                this.results = [...this.results, updatedScores]
+                this.endSetClicked = true
+                this.handleNextSet()
             },
             error: (err) => {
                 this.endingSet = false
@@ -500,7 +511,6 @@ export class GameComponent implements OnInit{
                 this.router.navigate(['/'])
             },
             error: (err) => {
-                this.isEndOfMatch = false
                 this.endingMatch = false
                 this.showError('match', 'Risultati della partita non salvati: premi FINE MATCH per riprovare', err)
             }
@@ -512,10 +522,9 @@ export class GameComponent implements OnInit{
         this.endMatch()
     }
 
+    // FINE MATCH is enabled only after FINE SET, so the last set is already saved
     endMatch() {
-        this.isEndOfMatch = true
         this.endingMatch = true
-        this.endSet()
         this.updateMatchResults(this.results)
     }
 }
