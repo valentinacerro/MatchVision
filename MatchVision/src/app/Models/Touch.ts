@@ -21,6 +21,7 @@ export class Touch {
         public set: number,
         public fundamental: FundamentalType | string,
         public outcome: TouchResult | string,
-        public player: number
+        public player: number,
+        public client_id?: string // same id on a retry, so the server does not save it twice
     ) {}
 }

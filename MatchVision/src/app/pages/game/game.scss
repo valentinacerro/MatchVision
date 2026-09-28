@@ -164,15 +164,17 @@ body {
     border-radius: 7px;
 }
 
-// Compact and over the header, so score and SET label stay visible
+// At the bottom, in the free space under the command bar: score, SET label and court stay visible
 .game-error {
     position: fixed;
-    top: 0.3rem;
+    bottom: 0.3rem;
     left: 50%;
     transform: translateX(-50%);
     z-index: 2000;
     min-width: 40%;
-    max-width: 70%;
+    max-width: 90%;
+    max-height: 7rem;
+    overflow-y: auto;
     margin: 0;
     padding: 0.4rem 0.8rem;
     font-size: 1rem;
