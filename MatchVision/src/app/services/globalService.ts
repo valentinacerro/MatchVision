@@ -49,7 +49,7 @@ export class GlobalService {
     currentPlayers = signal<Player[]>([])
     currentUserId = signal<number | null>(null)
 
-    private apiUrl = 'http://localhost:8000'
+    private apiUrl = 'http://localhost:8001'
 
     constructor(private http: HttpClient) {}
 

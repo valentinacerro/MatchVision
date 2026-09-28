@@ -9,7 +9,7 @@ import { Player } from '../Models/Player'
 
 export class StatsService {
 
-    private apiUrl = 'http://localhost:8000'
+    private apiUrl = 'http://localhost:8001'
 
     constructor(private http: HttpClient) {}
     

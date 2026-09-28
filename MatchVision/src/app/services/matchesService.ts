@@ -10,7 +10,7 @@ import { Team } from '../Models/Team';
 })
 export class MatchesService {
 
-private apiUrl = 'http://localhost:8000';
+private apiUrl = 'http://localhost:8001';
 
     constructor(private http: HttpClient) {}
 

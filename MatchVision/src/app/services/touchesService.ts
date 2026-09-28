@@ -9,7 +9,7 @@ import { Touch } from '../Models/Touch';
 
 export class TouchesService {
 
-    private apiUrl = 'http://localhost:8000'
+    private apiUrl = 'http://localhost:8001'
 
     constructor(private http: HttpClient) {}
 
