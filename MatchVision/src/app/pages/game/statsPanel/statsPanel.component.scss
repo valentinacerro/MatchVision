@@ -1,0 +1,37 @@
+.fundamentals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.fundamental-btn {
+    min-height: 2.8rem;
+    min-width: 7rem;
+    border: 2px solid #6c757d;
+    font-weight: 600;
+}
+
+.fundamental-btn.selected {
+    background-color: #212529;
+    border-color: #212529;
+    color: white;
+}
+
+// Readable from the bench during a 30 s time-out
+.kpi-table {
+    font-size: 1.1rem;
+}
+
+.team-row td {
+    font-weight: bold;
+    border-top: 2px solid #212529;
+}
+
+.negative {
+    color: #b02a37;
+}
+
+.legend {
+    font-size: 0.85rem;
+    color: #666;
+}

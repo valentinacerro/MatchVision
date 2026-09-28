@@ -1,0 +1,59 @@
+<ng-template #content let-modal>
+    <div class="modal-header">
+        <h4 class="modal-title" id="modal-stats">Statistiche</h4>
+        <div class="btn-group ms-3" role="group" aria-label="Periodo">
+            <button type="button" class="btn" [class.btn-dark]="scope === 'set'" [class.btn-outline-dark]="scope !== 'set'" (click)="setScope('set')">{{ setLabel }}</button>
+            <button type="button" class="btn" [class.btn-dark]="scope === 'match'" [class.btn-outline-dark]="scope !== 'match'" (click)="setScope('match')">Partita</button>
+        </div>
+        <button type="button" class="btn btn-outline-primary ms-2" (click)="load()">Aggiorna</button>
+        <button type="button" class="btn-close" aria-label="Chiudi" (click)="modal.close()"></button>
+    </div>
+
+    <div class="modal-body">
+        @if (loading) {
+            <div class="text-muted">Caricamento…</div>
+        } @else if (error) {
+            <div class="alert alert-danger mb-0">{{ error }}</div>
+        } @else if (rows.length === 0) {
+            <div class="text-muted">Nessun tocco registrato</div>
+        } @else {
+            <div class="fundamentals mb-3">
+                @for (f of availableFundamentals; track f) {
+                    <button type="button" class="btn fundamental-btn" [class.selected]="fundamental === f" (click)="fundamental = f">{{ f }}</button>
+                }
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-sm align-middle text-center kpi-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th class="text-start">Giocatore</th>
+                            <th>Tot</th>
+                            @for (g of grades; track g) { <th>{{ g }}</th> }
+                            <th>Positività</th>
+                            <th>Efficienza</th>
+                            <th>Errori</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (r of visibleRows; track r.player + r.fundamental) {
+                            <tr [class.team-row]="r.team">
+                                <td>{{ r.number ?? '' }}</td>
+                                <td class="text-start">{{ r.player }}</td>
+                                <td>{{ r.tot }}</td>
+                                @for (g of grades; track g) { <td>{{ r[g] }}</td> }
+                                <td>{{ r.positivita }}%</td>
+                                <td [class.negative]="r.efficienza < 0">{{ r.efficienza }}%</td>
+                                <td>{{ r.errori }}%</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        <p class="legend mb-0">
+            Positività = (++ + +) / tot · Efficienza = (++ − — —) / tot · Errori = — — / tot
+        </p>
+    </div>
+</ng-template>
