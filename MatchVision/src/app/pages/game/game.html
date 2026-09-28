@@ -159,7 +159,7 @@
         
             <button (click)="togglePos()" class="btn btn-outline-light btn-lg">CAMBIO CAMPO</button>
             <button (click)="confirmEndSet()" [disabled]="endSetClicked || endingSet || !hasActiveSet" class="btn btn-outline-light btn-lg">FINE SET</button>
-            <button (click)="startNewSet()" class="btn btn-outline-light btn-lg" [disabled]="(!endSetClicked && hasActiveSet) || allSetsPlayed || creatingSet">NUOVO SET</button>
+            <button (click)="startNewSet()" class="btn btn-outline-light btn-lg" [disabled]="(!endSetClicked && hasActiveSet) || allSetsPlayed || creatingSet || endingMatch">NUOVO SET</button>
             <button [disabled]="!canEndMatch" (click)="confirmEndMatch()" class="btn btn-outline-light btn-lg">FINE MATCH</button>
         </div>
 

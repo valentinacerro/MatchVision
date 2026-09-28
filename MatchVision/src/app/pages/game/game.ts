@@ -305,7 +305,7 @@ export class GameComponent implements OnInit, OnDestroy{
         if (last && this.canUndo) this.deleteTouch(last)
     }
 
-    deleteTouch(touch: TrackedTouch): void {
+    deleteTouch(touch: TrackedTouch, onFail?: () => void): void {
         const key = `delete-${touch.id}` // one message per touch, so one success does not hide another failure
         this.pendingDeletes++
         this.touchesService.deleteTouch(touch.id).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
@@ -317,6 +317,7 @@ export class GameComponent implements OnInit, OnDestroy{
                     return
                 }
                 this.pendingDeletes--
+                onFail?.()
                 this.refreshStatus()
                 this.showError(key, `Tocco non eliminato (${this.touchLabel(touch)}): riprova`, err)
             }
@@ -389,6 +390,7 @@ export class GameComponent implements OnInit, OnDestroy{
     }
 
     private dropUnsaved(list: TrackedTouch[]): void {
+        this.clearError('discard') // a new attempt: an earlier failure is no longer relevant
         this.failedTouches = this.failedTouches.filter(t => !list.includes(t))
         list.filter(t => t.uncertain).forEach(t => this.removeUncertainTouch(t))
         this.refreshStatus()
@@ -402,7 +404,10 @@ export class GameComponent implements OnInit, OnDestroy{
         this.touchesService.createTouch(payload).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
             next: (res) => {
                 this.pendingDeletes--
-                this.deleteTouch({ ...res, seq, rally })
+                // If the delete fails, the touch goes back to the unsaved list so Scarta can try again
+                this.deleteTouch({ ...res, seq, rally }, () => {
+                    this.failedTouches = [...this.failedTouches, touch]
+                })
             },
             error: (err) => {
                 this.pendingDeletes--
@@ -415,8 +420,11 @@ export class GameComponent implements OnInit, OnDestroy{
 
     // Status messages that only make sense while something is pending or unsaved
     private refreshStatus(): void {
-        if (!this.busy) this.clearError('busy')
-        if (!this.busy && this.failedTouches.length === 0) this.clearError('unsaved')
+        if (!this.busy) {
+            this.clearError('busy')
+            this.clearError('pending')
+        }
+        if (this.failedTouches.length === 0) this.clearError('unsaved')
     }
 
     // Rotation of players: the player in position 2 goes to 1, 1 goes to 6, ...
@@ -436,6 +444,7 @@ export class GameComponent implements OnInit, OnDestroy{
     }
 
     startNewSet(){
+        if (this.endingMatch) return
         const currentMatch = this.globalService.currentMatch()
         if (!currentMatch || !currentMatch.id) {
             this.showError('match', 'Nessuna partita attiva: torna alle partite e creane una')
@@ -480,6 +489,7 @@ export class GameComponent implements OnInit, OnDestroy{
                     this.creatingSet = false
                     this.clearError('set')
                     this.clearError('touch')
+                    this.clearError('match')
                     this.globalService.currentSet.set(res);
                     this.cdr.detectChanges()
                     console.log(res)
@@ -601,7 +611,7 @@ export class GameComponent implements OnInit, OnDestroy{
             return
         }
         if (this.busy) {
-            this.showError('unsaved', 'Salvataggio in corso: attendi e premi di nuovo FINE MATCH')
+            this.showError('pending', 'Salvataggio in corso: attendi e premi di nuovo FINE MATCH')
             return
         }
         const emptySet = this.currentSetUnstarted ? ' Il set vuoto appena aperto verrà eliminato.' : ''
