@@ -2,6 +2,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from django.http import JsonResponse
+from django.db import IntegrityError, transaction
 
 from .models import Player, Team, Match, Set, Touch
 from .serializers import SetUpdateSerializer, MatchUpdateSerializer, PlayerSerializer, TeamSerializer, MatchSerializer, SetSerializer, TouchSerializer, EventSerializer, UserSerializer
@@ -215,7 +216,15 @@ def createTouch(request):
             return Response(TouchSerializer(existing).data, status=status.HTTP_200_OK)
     serializer = TouchSerializer(data = request.data)
     if serializer.is_valid():
-        serializer.save()
+        try:
+            with transaction.atomic():
+                serializer.save()
+        except IntegrityError:
+            # The same client_id arrived twice at the same time: the other request saved it
+            existing = Touch.objects.filter(client_id=client_id).first()
+            if not client_id or not existing:
+                raise
+            return Response(TouchSerializer(existing).data, status=status.HTTP_200_OK)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
