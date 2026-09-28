@@ -25,12 +25,18 @@
             </div>
         }
 
+        @if (info) {
+            <div class="game-info" role="status">{{ info }}</div>
+        }
+
         <!-- top bar -->
         <div class="row top-bar">
         
             <div class="row col">  
             
-                <div class="manage-score d-flex justify-content-center align-items-center col">CASA
+                <div class="manage-score d-flex justify-content-center align-items-center col">
+                    <button type="button" class="serve-toggle" [class.serving]="serving === 'home'" [disabled]="endSetClicked"
+                        (click)="setServing('home')" aria-label="Batte CASA">🏐</button>CASA
                     <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || !hasActiveSet" (click)="decreaseScore('home')">—</button>
                     <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || !hasActiveSet" (click)="increaseScore('home')">+</button>
                 </div>
@@ -93,7 +99,9 @@
                     }
                 </div>
 
-                <div class="manage-score d-flex justify-content-center align-items-center col">OSPITI
+                <div class="manage-score d-flex justify-content-center align-items-center col">
+                    <button type="button" class="serve-toggle" [class.serving]="serving === 'guests'" [disabled]="endSetClicked"
+                        (click)="setServing('guests')" aria-label="Batte OSPITI">🏐</button>OSPITI
                     <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || !hasActiveSet" (click)="decreaseScore('guests')">—</button>
                     <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || !hasActiveSet" (click)="increaseScore('guests')">+</button> 
                 </div>
@@ -113,7 +121,8 @@
         <!-- Players icons -->
             @for (player of starting_players; track $index){
                 <button class="player-icon btn btn-primary position-absolute" [style.left.%]="playerPos($index)[0]" [style.top.%]="playerPos($index)[1]"
-                    [class.selected]="selectedOnCourt?.id === player.id" (click)="selectPlayer(player)">{{ player.number }}</button>
+                    [class.selected]="selectedOnCourt?.id === player.id" [class.server]="serving === 'home' && $index === serverIdx"
+                    (click)="selectPlayer(player)">{{ player.number }}</button>
             }        
             <!-- Positioning libero -->
             @if (libero){
@@ -125,6 +134,7 @@
         <!-- Always-visible input: player (court) -> fundamental -> grade -->
         <app-touch-pad
             [player]="selectedOnCourt"
+            [suggestion]="suggestion"
             [disabled]="endSetClicked || !hasActiveSet"
             (touchEntered)="onTouchEntered($event)"
             (statsRequested)="openStats()">

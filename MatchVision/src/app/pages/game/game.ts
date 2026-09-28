@@ -17,6 +17,10 @@ import { SetsService } from '../../services/setsService'
 import { GlobalService } from '../../services/globalService'
 import { MatchesService } from '../../services/matchesService'
 import { timeout } from 'rxjs'
+import {
+    afterPoint, DEFAULT_FORMAT, MatchFormat, matchWinner, serverIndex, setsWon, setWinner,
+    sideSwitchDue, suggestFundamental, Team, terminalWinner,
+} from './rallyEngine'
 
 // A touch as tracked on this page: tap order and rally are fixed when the scout taps.
 // uncertain: the request timed out, so the server may have saved it anyway.
@@ -84,6 +88,17 @@ export class GameComponent implements OnInit, OnDestroy{
 
     score = {home: 0, guests: 0}
 
+    // Rally engine: who serves, the match format and the last automatic point (undo reverts it)
+    serving: Team = 'home'
+    firstServer: Team = 'home' // who served first in this set; the other team starts the next one
+    format: MatchFormat = DEFAULT_FORMAT
+    sideSwitched: boolean = false
+    suggestion = { completo: '', solo: '', id: 0 }
+    private lastAutoPoint: { touchSeq: number; prev: { home: number; guests: number; serving: Team; rotation: number; rallySeq: number } } | null = null
+    info: string = ''
+    private infoTimer: any = null
+    private autoSelected: Player | null = null // the server preselected by the app, not by the scout
+
     // To insert a touch
     selectedPlayer!: Player | null
     newTouch: Touch = {
@@ -138,23 +153,111 @@ export class GameComponent implements OnInit, OnDestroy{
         this.players = this.globalService.currentPlayers()
         const currentMatch = this.globalService.currentMatch()
         console.log("dati partita corrente", currentMatch)
+        if (currentMatch?.sets_to_win) {
+            this.format = {
+                setsToWin: currentMatch.sets_to_win,
+                setPoints: currentMatch.set_points ?? DEFAULT_FORMAT.setPoints,
+                tiebreakPoints: currentMatch.tiebreak_points ?? DEFAULT_FORMAT.tiebreakPoints,
+            }
+        }
         this.startNewSet()
     }
 
     // A left match cannot be resumed: forget it, so coming back does not reuse its sets
     ngOnDestroy(): void {
+        clearTimeout(this.infoTimer)
         this.globalService.resetAll()
     }
 
-    // A score change closes the rally in progress
-    increaseScore(team: 'home' | 'guests') {
-        this.score[team]++
-        this.closeRally()
+    // "+" = rally won by that team: serve and rotation follow the rules
+    increaseScore(team: Team) {
+        this.awardPoint(team)
     }
 
-    decreaseScore(team: 'home' | 'guests') {
+    // "−" = correction of the score only (serve and rotation are not touched)
+    decreaseScore(team: Team) {
         if (this.score[team] > 0) this.score[team]--
+        this.lastAutoPoint = null
         this.closeRally()
+        this.updateSuggestion()
+    }
+
+    private awardPoint(winner: Team, cause: string = '', auto: boolean = false): void {
+        if (!auto) this.lastAutoPoint = null
+        this.score[winner]++
+        const next = afterPoint({ serving: this.serving, rotation: this.rotation }, winner)
+        this.serving = next.serving
+        this.rotation = next.rotation
+        this.closeRally()
+        if (cause) this.showInfo(`Punto ${winner === 'home' ? 'CASA' : 'OSPITI'} (${cause})${next.rotated ? ' · rotazione' : ''}`)
+        if (!this.sideSwitched && sideSwitchDue(this.score, this.setNumber, this.format)) {
+            this.sideSwitched = true
+            this.togglePos()
+            this.showInfo('Tie-break a 8 punti: cambio campo')
+        }
+        this.updateSuggestion()
+        const setWon = setWinner(this.score, this.setNumber, this.format)
+        if (setWon && !this.endSetClicked && !this.endingSet) {
+            const who = setWon === 'home' ? 'CASA' : 'OSPITI'
+            if (confirm(`Set ${this.setNumber} vinto da ${who} ${this.score.home}-${this.score.guests}: chiudere il set?`)) this.endSet()
+        }
+    }
+
+    // Who serves: chosen at the start of the set, can be corrected at any time (no rotation)
+    setServing(team: Team): void {
+        if (this.endSetClicked) return
+        if (this.score.home === 0 && this.score.guests === 0) this.firstServer = team
+        this.serving = team
+        this.lastAutoPoint = null
+        this.updateSuggestion()
+    }
+
+    get serverIdx(): number {
+        return serverIndex(this.rotation)
+    }
+
+    // Suggested fundamental for the pad; at the start of a home serve the server is preselected too
+    updateSuggestion(): void {
+        const rally = [...this.touches, ...this.pendingTouches]
+            .filter(t => t.rally === this.rallySeq)
+            .sort((a, b) => a.seq - b.seq)
+            .map(t => t.fundamental)
+        this.suggestion = {
+            completo: suggestFundamental(this.serving, rally, false),
+            solo: suggestFundamental(this.serving, rally, true),
+            id: this.suggestion.id + 1,
+        }
+        if (rally.length === 0 && this.serving === 'home' && this.starting_players.length === 6 && !this.endSetClicked) {
+            this.selectedPlayer = this.starting_players[this.serverIdx]
+            this.autoSelected = this.selectedPlayer
+        } else if (this.autoSelected) {
+            // The preselection no longer applies (the serve passed, a touch was undone...)
+            if (this.selectedPlayer?.id === this.autoSelected.id) this.selectedPlayer = null
+            this.autoSelected = null
+        }
+    }
+
+    showInfo(message: string, ms: number = 3000): void {
+        this.info = message
+        clearTimeout(this.infoTimer)
+        this.infoTimer = setTimeout(() => {
+            this.info = ''
+            this.cdr.detectChanges()
+        }, ms)
+        this.cdr.detectChanges()
+    }
+
+    // Undoing the touch that scored also takes back its point, serve and rotation
+    private revertAutoPoint(): void {
+        const p = this.lastAutoPoint?.prev
+        if (!p) return
+        this.score.home = p.home
+        this.score.guests = p.guests
+        this.serving = p.serving
+        this.rotation = p.rotation
+        this.rallySeq = p.rallySeq
+        this.lastAutoPoint = null
+        this.showInfo('Punto annullato')
     }
 
     private closeRally(): void {
@@ -235,6 +338,7 @@ export class GameComponent implements OnInit, OnDestroy{
             return
         }
         this.selectedPlayer = this.selectedOnCourt?.id === player.id ? null : player
+        this.autoSelected = null
     }
 
     // The selection counts only while that player is on court: a substitution, a libero swap,
@@ -251,8 +355,17 @@ export class GameComponent implements OnInit, OnDestroy{
             this.showError('touch', 'Tocca prima un giocatore in campo')
             return
         }
-        this.registerNewTouch(event)
+        const prev = { home: this.score.home, guests: this.score.guests, serving: this.serving, rotation: this.rotation, rallySeq: this.rallySeq }
+        const sent = this.registerNewTouch(event)
         this.selectedPlayer = null
+        if (!sent) return
+        const winner = terminalWinner(event.fundamental, event.outcome)
+        if (winner) {
+            this.lastAutoPoint = { touchSeq: this.touchSeq, prev }
+            this.awardPoint(winner, `${event.fundamental} ${event.outcome}`, true)
+        } else {
+            this.updateSuggestion()
+        }
     }
 
     openStats(): void { this.statsPanel.open() }
@@ -367,6 +480,8 @@ export class GameComponent implements OnInit, OnDestroy{
     private onTouchDeleted(touch: TrackedTouch, key: string): void {
         this.pendingDeletes--
         this.touches = this.touches.filter(t => t.id !== touch.id)
+        if (this.lastAutoPoint?.touchSeq === touch.seq) this.revertAutoPoint()
+        this.updateSuggestion()
         console.log('Tocco eliminato', touch.id)
         this.clearError(key)
         this.refreshStatus()
@@ -374,11 +489,11 @@ export class GameComponent implements OnInit, OnDestroy{
     }
 
     // Create new touch
-    registerNewTouch(event: {fundamental: string; outcome: string}): void {
+    registerNewTouch(event: {fundamental: string; outcome: string}): boolean {
         const currentSet = this.globalService.currentSet()
         if(!currentSet || !currentSet.id || this.endSetClicked) {
             this.showError('touch', 'Nessun set attivo: tocco non registrato')
-            return
+            return false
         }
         this.newTouch.set = currentSet.id
         if(this.selectedPlayer)
@@ -389,7 +504,9 @@ export class GameComponent implements OnInit, OnDestroy{
         if((this.newTouch.fundamental != "") && (this.newTouch.outcome != "")) {
             this.sendTouch({ ...this.newTouch, client_id: newClientId(), seq: ++this.touchSeq, rally: this.rallySeq })
             this.newTouch = {id: -1, set: -1, player: -1, fundamental: '', outcome: ''}
+            return true
         }
+        return false
     }
 
     private sendTouch(touch: TrackedTouch): void {
@@ -469,9 +586,11 @@ export class GameComponent implements OnInit, OnDestroy{
         if (this.failedTouches.length === 0) this.clearError('unsaved')
     }
 
-    // Rotation of players: the player in position 2 goes to 1, 1 goes to 6, ...
+    // Manual rotation (correction): the player in position 2 goes to 1, 1 goes to 6, ...
     doRotation(): void {
         this.rotation = (this.rotation + 1) % 6
+        this.lastAutoPoint = null
+        this.updateSuggestion()
     }
 
     playerPos(i: number): [number, number] {
@@ -484,6 +603,7 @@ export class GameComponent implements OnInit, OnDestroy{
         this.libero = event.libero
         this.bench_players = event.benchPlayers
         this.bench_libero = event.benchLibero
+        this.updateSuggestion()
     }
 
     startNewSet(){
@@ -559,6 +679,14 @@ export class GameComponent implements OnInit, OnDestroy{
         this.score.guests = 0
         this.score.home = 0
         this.rotation = 0
+        this.lastAutoPoint = null
+        this.sideSwitched = false
+        if (this.setNumber > 1) {
+            // New set: the teams change court and the other team serves first
+            this.firstServer = this.firstServer === 'home' ? 'guests' : 'home'
+            this.index = this.index === 0 ? 1 : 0
+        }
+        this.serving = this.firstServer
 
         this.changeCounter = 6
         this.doubleChangeCounter = 2
@@ -568,6 +696,7 @@ export class GameComponent implements OnInit, OnDestroy{
 
         this.endSetClicked = false
         this.clearError('locked')
+        this.updateSuggestion()
 
         this.cdr.detectChanges()
     }
@@ -612,6 +741,12 @@ export class GameComponent implements OnInit, OnDestroy{
                 this.results = [...this.results, updatedScores]
                 this.endSetClicked = true
                 this.selectedPlayer = null
+                this.lastAutoPoint = null
+                const won = matchWinner(this.results, this.format)
+                if (won) {
+                    const sets = setsWon(this.results)
+                    this.showInfo(`Partita vinta da ${won === 'home' ? 'CASA' : 'OSPITI'} ${sets.home}-${sets.guests}: premi FINE MATCH`, 10000)
+                }
                 this.handleNextSet()
             },
             error: (err) => {

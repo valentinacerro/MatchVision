@@ -18,6 +18,8 @@ export class TouchPadComponent implements OnChanges {
 
     @Input() player: Player | null = null
     @Input() disabled: boolean = false
+    // Most likely next fundamental for each profile; a new object means "apply it now"
+    @Input() suggestion: { completo: string; solo: string; id: number } | null = null
     @Output() touchEntered = new EventEmitter<{fundamental: string; outcome: string}>()
     @Output() statsRequested = new EventEmitter<void>()
 
@@ -34,12 +36,27 @@ export class TouchPadComponent implements OnChanges {
     hint = ''
     private lastSave = 0
 
+    suggested = false // the selected fundamental comes from the suggestion
+
     ngOnChanges(changes: SimpleChanges): void {
         if (changes['player']) this.hint = ''
         // A closed set starts the next one clean
         if (changes['disabled'] && this.disabled) {
             this.fundamental = ''
             this.hint = ''
+            this.suggested = false
+        }
+        if ((changes['suggestion'] || (changes['disabled'] && !this.disabled)) && !this.disabled) this.applySuggestion()
+    }
+
+    private applySuggestion(): void {
+        const f = this.profile === 'solo' ? this.suggestion?.solo : this.suggestion?.completo
+        if (f && this.fundamentals.includes(f)) {
+            this.fundamental = f
+            this.suggested = true
+        } else if (this.suggested) {
+            this.fundamental = ''
+            this.suggested = false
         }
     }
 
@@ -50,11 +67,13 @@ export class TouchPadComponent implements OnChanges {
     setProfile(profile: 'solo' | 'completo'): void {
         this.profile = profile
         if (!this.fundamentals.includes(this.fundamental)) this.fundamental = ''
+        if (this.suggested || !this.fundamental) this.applySuggestion()
         try { localStorage.setItem(PROFILE_KEY, profile) } catch {}
     }
 
     selectFundamental(f: string): void {
         this.fundamental = this.fundamental === f ? '' : f
+        this.suggested = false
         this.hint = ''
     }
 
@@ -71,6 +90,7 @@ export class TouchPadComponent implements OnChanges {
         }
         this.touchEntered.emit({ fundamental: this.fundamental, outcome })
         this.fundamental = ''
+        this.suggested = false
         this.hint = ''
         this.lastSave = Date.now()
     }
