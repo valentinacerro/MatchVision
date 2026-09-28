@@ -92,7 +92,7 @@
 
         <!-- Players icons -->
             @for (player of starting_players; track $index){
-                <button class="player-icon btn btn-primary position-absolute" [style.left.%]="pos[this.index][$index][0]" [style.top.%]="pos[this.index][$index][1]"
+                <button class="player-icon btn btn-primary position-absolute" [style.left.%]="playerPos($index)[0]" [style.top.%]="playerPos($index)[1]"
                     (click)="this.selectedPlayer = player; openNewTouchModal()">{{ player.number }}</button>
             }        
             <!-- Positioning libero -->

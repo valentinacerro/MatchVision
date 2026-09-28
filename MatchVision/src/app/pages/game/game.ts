@@ -60,8 +60,9 @@ export class GameComponent implements OnInit{
         [85, 80], // pos 5
         [85, 50], // pos 6
     ];
-    index: number = 0
+    index: number = 0 // court side
     pos: [number, number][][] = [this.left_pos, this.right_pos]
+    rotation: number = 0 // one rotation state shared by both sides
 
     libero_pos_left: [number, number] = [0, 95] // Libero
     libero_pos_right: [number, number] = [99, 95] // Libero
@@ -221,12 +222,13 @@ export class GameComponent implements OnInit{
         }
     }
 
-    // Rotation of players
+    // Rotation of players: the player in position 2 goes to 1, 1 goes to 6, ...
     doRotation(): void {
-        const last = this.pos[this.index].pop();
-        if (last) {
-            this.pos[this.index].unshift(last);
-        }
+        this.rotation = (this.rotation + 1) % 6
+    }
+
+    playerPos(i: number): [number, number] {
+        return this.pos[this.index][(i - this.rotation + 6) % 6]
     }
 
     assignPlayers(event: any) {
@@ -294,6 +296,7 @@ export class GameComponent implements OnInit{
         this.touches = []
         this.score.guests = 0
         this.score.home = 0
+        this.rotation = 0
 
         this.changeCounter = 6
         this.doubleChangeCounter = 2
