@@ -38,6 +38,8 @@ export class NewMatchModalComponent {
     }
 
     matchInfoSaved: boolean = false
+    saving: boolean = false
+    errorMessage: string = ''
 
     ngOnInit(): void {
         this.globalService.loadTeams();
@@ -45,6 +47,10 @@ export class NewMatchModalComponent {
 
     // To open the modal
     public open() {
+        this.newMatch = { id: 0, name: '', team_id: 0, timestamp: new Date(), result: null };
+        this.matchInfoSaved = false
+        this.saving = false
+        this.errorMessage = ''
         this.modalService.open(this.content, { ariaLabelledBy: 'new-match-modal' }).result.then(
             (result) => {
             this.closeResult.set(`Closed with: ${result}`);
@@ -57,7 +63,9 @@ export class NewMatchModalComponent {
 
     // To save the match
     public saveMatch(form: any, modal: any) {
-        if (form.valid) {
+        if (form.valid && !this.saving && !this.matchInfoSaved) {
+            this.saving = true
+            this.errorMessage = ''
             this.matchesService.createMatch(this.newMatch).subscribe({
                 next: (res) => {
                     this.globalService.currentMatch.set(res) //set general current match
@@ -67,19 +75,27 @@ export class NewMatchModalComponent {
                         next: (playersRes) => {
                             this.globalService.currentPlayers.set(playersRes)
                             console.log("Player appena creat", this.globalService.currentPlayers())
+                            // Only now the game can start: match and players are ready
+                            this.matchInfoSaved = true
+                            this.saving = false
                             this.matchCreated.emit()
                             this.cdr.detectChanges()
                         },
-                        error: (playersErr) => console.error('Errore caricamento giocatori', playersErr)
+                        error: (playersErr) => this.showError('Errore caricamento giocatori', playersErr)
                     })
                     // modal.close('Save click');
                 },
-                error: (err) => console.error('Errore salvataggio nuovo match', err)
+                error: (err) => this.showError('Errore salvataggio nuovo match', err)
             });
-        // Reset form
-        this.newMatch = { id: 0, name: '', team_id: 0, timestamp: new Date(), result: null };
         }
-    }    
+    }
+
+    private showError(message: string, err: any) {
+        console.error(message, err)
+        this.saving = false
+        this.errorMessage = message + '. Riprova.'
+        this.cdr.detectChanges()
+    }
  
     
 }
