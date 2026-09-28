@@ -83,6 +83,7 @@ export class GameComponent implements OnInit{
     pendingSaves: number = 0 // touches sent but not confirmed yet
     pendingDeletes: number = 0
     rallyStartIndex: number = 0 // first touch after the last point
+    errorMessage: string = ''
 
     // all players
     players: Player[] = []
@@ -143,6 +144,13 @@ export class GameComponent implements OnInit{
         return this.touches.length > 0 && this.pendingSaves === 0 && this.pendingDeletes === 0
     }
 
+    // Errors stay on screen until dismissed, so a lost touch is never silent
+    showError(message: string, err?: any): void {
+        if (err) console.error(message, err)
+        this.errorMessage = message
+        this.cdr.detectChanges()
+    }
+
 
     // Inserting a new touch for the player
     openNewTouchModal() { this.newTouchModal.open() }
@@ -187,7 +195,7 @@ export class GameComponent implements OnInit{
     // Replayed point: delete only the touches of the rally in progress
     cancelCurrentRally(): void {
         if (this.pendingSaves > 0 || this.pendingDeletes > 0) {
-            console.log('Operazione in corso, riprova tra un attimo')
+            this.showError('Salvataggio in corso, riprova tra un attimo')
             return
         }
         const rallyTouches = this.touches.slice(Math.min(this.rallyStartIndex, this.touches.length))
@@ -214,8 +222,7 @@ export class GameComponent implements OnInit{
             },
             error: (err) => {
                 this.pendingDeletes--
-                console.error('Errore eliminazione tocco', err)
-                this.cdr.detectChanges()
+                this.showError('Tocco non eliminato: riprova', err)
             }
         })
     }
@@ -223,12 +230,11 @@ export class GameComponent implements OnInit{
     // Create new touch
     registerNewTouch(event: {fundamental: string; outcome: string}): void {
         const currentSet = this.globalService.currentSet()
-        if(!currentSet) {
-            console.log("Nessun set iniziato")
+        if(!currentSet || !currentSet.id) {
+            this.showError('Nessun set attivo: tocco non registrato')
             return
-        } 
-        if (currentSet.id)
-            this.newTouch.set = currentSet.id
+        }
+        this.newTouch.set = currentSet.id
         if(this.selectedPlayer)
             this.newTouch.player = this.selectedPlayer.id
         this.newTouch.fundamental = event.fundamental
@@ -245,8 +251,7 @@ export class GameComponent implements OnInit{
                 },
                 error: (err) => {
                     this.pendingSaves--
-                    console.error('Errore salvataggio nuovo tocco', err)
-                    this.cdr.detectChanges()
+                    this.showError(`Tocco NON salvato (${event.fundamental} ${event.outcome}): registralo di nuovo`, err)
                 }
             });
             this.newTouch = {id: -1, set: -1, player: -1, fundamental: '', outcome: ''}
@@ -271,8 +276,8 @@ export class GameComponent implements OnInit{
 
     startNewSet(){
         const currentMatch = this.globalService.currentMatch()
-        if (!currentMatch) {
-            console.log("Errore: nessun match trovato con questo id")
+        if (!currentMatch || !currentMatch.id) {
+            this.showError('Nessuna partita attiva: torna alle partite e creane una')
             return
         }
 
@@ -312,7 +317,7 @@ export class GameComponent implements OnInit{
                     console.log(res)
                     this.resetVariables()
                 },
-                error: (err) => console.error('Errore salvataggio nuovo set', err)
+                error: (err) => this.showError('Set non creato: riprova', err)
             }); 
         }
     }
@@ -352,7 +357,7 @@ export class GameComponent implements OnInit{
         // Update set
         const currentSet = this.globalService.currentSet()
         if(!currentSet || !currentSet.id){
-            console.log("Errore assegnazione set, update")
+            this.showError('Nessun set attivo da chiudere')
             return
         }
     
@@ -371,14 +376,14 @@ export class GameComponent implements OnInit{
                     if(!this.isEndOfMatch)
                         this.handleNextSet()
             },
-            error: (err) => console.error("Errore aggiornamento set", err)
+            error: (err) => this.showError('Punteggio del set non salvato: riprova', err)
         });
     }
 
     updateMatchResults(results: { home_score: number; guest_score: number }[]) {
         const match = this.globalService.currentMatch()
         if(!match || !match.id)
-            console.log("Errore: nessun match a cui aggiornare i risultati", match?.id)
+            this.showError('Nessuna partita a cui salvare i risultati')
         else
         this.matchesService.updateMatch(match.id, { results: results }).subscribe({
             next: (res) => {
@@ -387,7 +392,7 @@ export class GameComponent implements OnInit{
                 console.log("Risultati aggiornati:", res.result)
                 this.globalService.resetAll()
             },
-            error: (err) => console.error("Errore update match results", err)
+            error: (err) => this.showError('Risultati della partita non salvati: riprova', err)
     })
     }
 

@@ -7,6 +7,13 @@
 </head>
 <body>
 
+        @if (errorMessage) {
+            <div class="alert alert-danger alert-dismissible game-error" role="alert">
+                {{ errorMessage }}
+                <button type="button" class="btn-close" aria-label="Chiudi" (click)="errorMessage = ''"></button>
+            </div>
+        }
+
         <!-- top bar -->
         <div class="row top-bar">
         
