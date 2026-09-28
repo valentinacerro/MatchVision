@@ -1,4 +1,4 @@
-import { ChangeDetectorRef, Component, HostListener, OnInit, ViewChild } from '@angular/core'
+import { ChangeDetectorRef, Component, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core'
 import { Router, RouterModule } from '@angular/router'
 
 import { ChangePlayersModalComponent } from "./changePlayersModal/changePlayersModal.component"
@@ -36,7 +36,7 @@ const REQUEST_TIMEOUT_MS = 15000
     styleUrls: ['./game.scss']
 })
 
-export class GameComponent implements OnInit{
+export class GameComponent implements OnInit, OnDestroy{
 
     constructor(private touchesService: TouchesService,
         private setsService: SetsService,
@@ -132,6 +132,11 @@ export class GameComponent implements OnInit{
         const currentMatch = this.globalService.currentMatch()
         console.log("dati partita corrente", currentMatch)
         this.startNewSet()
+    }
+
+    // A left match cannot be resumed: forget it, so coming back does not reuse its sets
+    ngOnDestroy(): void {
+        this.globalService.resetAll()
     }
 
     // A score change closes the rally in progress
