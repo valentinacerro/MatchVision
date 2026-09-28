@@ -52,6 +52,8 @@
     --bs-btn-hover-border-color: #6c757d;
     --bs-btn-active-border-color: #6c757d;
     --bs-btn-active-bg: #e9ecef;
+    --bs-btn-disabled-border-color: #6c757d;
+    --bs-btn-disabled-color: var(--bs-body-color);
     min-height: 3.2rem;
     font-size: 1rem;
     font-weight: 600;
@@ -63,6 +65,7 @@
     --bs-btn-border-color: #212529;
     --bs-btn-hover-bg: #212529;
     --bs-btn-hover-color: white;
+    --bs-btn-hover-border-color: #212529;
     --bs-btn-active-bg: #212529;
     --bs-btn-active-color: white;
     --bs-btn-active-border-color: #212529;
@@ -132,8 +135,23 @@
     font-weight: 600;
 }
 
-@media (max-width: 767px) {
+// Portrait tablets and phones (pad below the court): wider and shorter,
+// with STATISTICHE on the header line
+@media (max-width: 767px), (orientation: portrait) and (max-width: 1100px) {
     .touch-pad {
-        width: 100%;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        grid-template-areas:
+            "header stats"
+            "fundamentals fundamentals"
+            "grades grades"
+            "hint hint";
+        width: min(92vw, 36rem);
     }
+
+    .pad-header { grid-area: header; }
+    .fundamentals { grid-area: fundamentals; }
+    .grades { grid-area: grades; }
+    .hint { grid-area: hint; min-height: 1.2rem; }
+    .stats-btn { grid-area: stats; }
 }

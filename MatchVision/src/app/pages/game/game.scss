@@ -225,6 +225,10 @@ body {
 
 .del-last-touch-text {
     font-size: 1.2rem;
+    // One line: a wrapping label would push the score buttons down over the court
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .bottom-bar .btn {
@@ -232,19 +236,39 @@ body {
     padding: 0.5rem 0.5rem;
 }
 
-// Portrait tablets and phones: pad below the court, court as wide as the screen
-@media (max-width: 767px), (orientation: portrait) and (max-width: 1024px) {
+// Portrait tablets and phones: pad below the court. The court is as wide as the screen,
+// but short enough that the command bar ends above the error banner area
+@media (max-width: 767px), (orientation: portrait) and (max-width: 1100px) {
     .play-area {
         flex-direction: column;
     }
 
     .play-area .court-container {
-        width: 92vw;
+        width: min(92vw, calc((100vh - 44rem) * 2));
+    }
+
+    .top-bar {
+        max-height: none;
+    }
+
+    // Last touch + undo get their own full-width line under the OSPITI score buttons
+    .top-bar > .row.col:last-child {
+        flex-wrap: wrap;
+    }
+
+    .top-bar > .row.col:last-child > .manage-score {
+        order: 1;
+    }
+
+    .top-bar .last-touch {
+        flex: 0 0 100%;
+        max-width: 100%;
+        order: 2;
     }
 }
 
-/* --- (mobile) --- */
-@media (max-width: 767px) {
+/* --- (phones only: small tablets like the iPad mini use the portrait layout above) --- */
+@media (max-width: 600px) {
 
     .top-bar {
         flex-direction: column;
