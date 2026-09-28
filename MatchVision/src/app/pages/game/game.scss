@@ -232,8 +232,8 @@ body {
     padding: 0.5rem 0.5rem;
 }
 
-/* --- (mobile) --- */
-@media (max-width: 767px) {
+// Portrait tablets and phones: pad below the court, court as wide as the screen
+@media (max-width: 767px), (orientation: portrait) and (max-width: 1024px) {
     .play-area {
         flex-direction: column;
     }
@@ -241,6 +241,10 @@ body {
     .play-area .court-container {
         width: 92vw;
     }
+}
+
+/* --- (mobile) --- */
+@media (max-width: 767px) {
 
     .top-bar {
         flex-direction: column;
