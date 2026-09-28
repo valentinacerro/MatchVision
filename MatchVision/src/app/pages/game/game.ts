@@ -305,8 +305,8 @@ export class GameComponent implements OnInit, OnDestroy{
         if (last && this.canUndo) this.deleteTouch(last)
     }
 
-    deleteTouch(touch: TrackedTouch, onFail?: () => void): void {
-        const key = `delete-${touch.id}` // one message per touch, so one success does not hide another failure
+    // key: one message per touch, so one success does not hide another failure
+    deleteTouch(touch: TrackedTouch, onFail?: () => void, key: string = `delete-${touch.id}`): void {
         this.pendingDeletes++
         this.touchesService.deleteTouch(touch.id).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
             next: () => this.onTouchDeleted(touch, key),
@@ -381,7 +381,9 @@ export class GameComponent implements OnInit, OnDestroy{
     retryFailedTouches(): void {
         const toRetry = this.failedTouches
         this.failedTouches = []
+        this.clearError('discard') // a re-sent touch is kept, so an earlier discard failure no longer applies
         toRetry.forEach(t => this.sendTouch(t))
+        this.refreshStatus()
     }
 
     discardFailedTouches(): void {
@@ -390,7 +392,7 @@ export class GameComponent implements OnInit, OnDestroy{
     }
 
     private dropUnsaved(list: TrackedTouch[]): void {
-        this.clearError('discard') // a new attempt: an earlier failure is no longer relevant
+        if (list.some(t => t.uncertain)) this.clearError('discard') // a new attempt replaces the old failure
         this.failedTouches = this.failedTouches.filter(t => !list.includes(t))
         list.filter(t => t.uncertain).forEach(t => this.removeUncertainTouch(t))
         this.refreshStatus()
@@ -407,7 +409,7 @@ export class GameComponent implements OnInit, OnDestroy{
                 // If the delete fails, the touch goes back to the unsaved list so Scarta can try again
                 this.deleteTouch({ ...res, seq, rally }, () => {
                     this.failedTouches = [...this.failedTouches, touch]
-                })
+                }, 'discard')
             },
             error: (err) => {
                 this.pendingDeletes--
