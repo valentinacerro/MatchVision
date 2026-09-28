@@ -46,6 +46,7 @@ export class StatsPanelComponent {
         const request = ++this.request
         this.rows = []
         if (!id) {
+            this.loading = false
             this.error = this.scope === 'set' ? 'Nessun set attivo' : 'Nessuna partita attiva'
             return
         }

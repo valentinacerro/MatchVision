@@ -37,7 +37,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @for (r of visibleRows; track r.player + r.fundamental) {
+                        @for (r of visibleRows; track (r.team ? 'team' : r.player_id) + '|' + r.fundamental) {
                             <tr [class.team-row]="r.team">
                                 <td>{{ r.number ?? '' }}</td>
                                 <td class="text-start">{{ r.player }}</td>
