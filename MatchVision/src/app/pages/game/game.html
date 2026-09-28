@@ -145,8 +145,8 @@
             [libero]="libero"
             [bench_libero]="bench_libero"
             (swapLiberosClicked)="swapLiberos()"
-            (changeOccurred)="changeCounter > 0 ? changeCounter = changeCounter - 1 : changeCounter"
-            (doubleChangeOccurred)="doubleChangeCounter > 0 ? doubleChangeCounter = doubleChangeCounter - 1 : doubleChangeCounter">
+            (changeOccurred)="onChange(false)"
+            (doubleChangeOccurred)="onChange(true)">
         </app-change-players-modal>
 
         <!-- Modal for a new event -->

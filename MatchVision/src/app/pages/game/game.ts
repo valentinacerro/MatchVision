@@ -275,7 +275,20 @@ export class GameComponent implements OnInit, OnDestroy{
     swapLiberos(): void {
         let temp = this.libero
         this.libero = this.bench_libero
-        this.bench_libero = temp }
+        this.bench_libero = temp
+        this.onLineupChanged() }
+
+    // A player who leaves the court loses the selection for good (not only while off court)
+    onLineupChanged(): void {
+        if (!this.selectedOnCourt) this.selectedPlayer = null
+    }
+
+    onChange(double: boolean): void {
+        if (double) {
+            if (this.doubleChangeCounter > 0) this.doubleChangeCounter--
+        } else if (this.changeCounter > 0) this.changeCounter--
+        this.onLineupChanged()
+    }
     
     togglePos(): void {
         this.index = this.index === 0 ? 1 : 0
@@ -598,6 +611,7 @@ export class GameComponent implements OnInit, OnDestroy{
                 // Recorded only once the server has it, so a retry does not duplicate it
                 this.results = [...this.results, updatedScores]
                 this.endSetClicked = true
+                this.selectedPlayer = null
                 this.handleNextSet()
             },
             error: (err) => {
