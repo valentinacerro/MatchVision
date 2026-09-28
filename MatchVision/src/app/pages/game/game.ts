@@ -1,4 +1,4 @@
-import { ChangeDetectorRef, Component, OnInit, ViewChild } from '@angular/core'
+import { ChangeDetectorRef, Component, HostListener, OnInit, ViewChild } from '@angular/core'
 import { Router, RouterModule } from '@angular/router'
 
 import { ChangePlayersModalComponent } from "./changePlayersModal/changePlayersModal.component"
@@ -147,6 +147,23 @@ export class GameComponent implements OnInit{
 
     get canUndo(): boolean {
         return this.touches.length > 0 && this.pendingSaves === 0 && this.pendingDeletes === 0
+    }
+
+    // The live state (lineup, score, rotation) exists only on this page
+    get gameInProgress(): boolean {
+        return !!this.globalService.currentMatch()?.id
+    }
+
+    @HostListener('window:beforeunload', ['$event'])
+    onBeforeUnload(event: BeforeUnloadEvent): void {
+        if (this.gameInProgress) {
+            event.preventDefault()
+            event.returnValue = ''
+        }
+    }
+
+    canLeave(): boolean {
+        return !this.gameInProgress || confirm('La partita è in corso: se esci non potrai riprenderla. Uscire comunque?')
     }
 
     // Errors stay on screen until dismissed, so a lost touch is never silent

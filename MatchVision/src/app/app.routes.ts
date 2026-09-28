@@ -17,7 +17,7 @@ export const routes: Routes = [
   { path: 'login', component: LoginComponent },
   { path: 'register', component: RegisterComponent },
   { path: 'statistics', component: StatisticsComponent },
-  { path: 'game', component: GameComponent },
+  { path: 'game', component: GameComponent, canDeactivate: [(game: GameComponent) => game.canLeave()] },
   { path: 'thanks', component: ThanksComponent },
 
   // Players
