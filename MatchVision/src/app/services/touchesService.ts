@@ -14,6 +14,11 @@ export class TouchesService {
 
     constructor(private http: HttpClient) {}
 
+    // Touches of a set in recording order (used to resume a match)
+    getSetTouches(setId: number): Observable<Touch[]> {
+        return this.http.get<Touch[]>(`${this.apiUrl}/sets/${setId}/touches/`);
+    }
+
     createTouch(touch: Touch): Observable<Touch> {
         return this.http.post<Touch>(`${this.apiUrl}/touches/create/`, touch);
     }

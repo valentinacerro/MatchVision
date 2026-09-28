@@ -1,5 +1,5 @@
 import { ChangeDetectorRef, Component, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core'
-import { Router, RouterModule } from '@angular/router'
+import { ActivatedRoute, Router, RouterModule } from '@angular/router'
 
 import { ChangePlayersModalComponent } from "./changePlayersModal/changePlayersModal.component"
 import { TouchPadComponent } from './touchPad/touchPad.component'
@@ -16,7 +16,7 @@ import { TouchesService } from '../../services/touchesService'
 import { SetsService } from '../../services/setsService'
 import { GlobalService } from '../../services/globalService'
 import { MatchesService } from '../../services/matchesService'
-import { timeout } from 'rxjs'
+import { forkJoin, switchMap, timeout } from 'rxjs'
 import {
     afterPoint, DEFAULT_FORMAT, MatchFormat, matchWinner, serverIndex, setsWon, setWinner,
     sideSwitchDue, suggestFundamental, Team, terminalWinner,
@@ -27,6 +27,29 @@ import {
 type TrackedTouch = Touch & { seq: number; rally: number; uncertain?: boolean }
 
 const REQUEST_TIMEOUT_MS = 15000
+const STATE_KEY = 'matchvision.live.' // + match id, local copy of the live state
+
+// Everything needed to resume a match that is being scouted (touches are on the server already)
+interface LiveState {
+    v: 1
+    savedAt: number
+    setId: number | null
+    setNumber: number
+    score: { home: number; guests: number }
+    serving: Team
+    firstServer: Team
+    rotation: number
+    index: number
+    sideSwitched: boolean
+    lineup: number[]
+    libero: number | null
+    benchLibero: number | null
+    bench: number[]
+    counters: { changes: number; doubleChanges: number; timeouts: number; yellow: number; red: number }
+    results: { home_score: number; guest_score: number }[]
+    endSetClicked: boolean
+    allSetsPlayed: boolean
+}
 
 function newClientId(): string {
     return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -54,6 +77,7 @@ export class GameComponent implements OnInit, OnDestroy{
         private matchesService: MatchesService,
         public globalService: GlobalService,
         private router: Router,
+        private route: ActivatedRoute,
         private cdr: ChangeDetectorRef) {}
 
     @ViewChild(ChangePlayersModalComponent) changePlayersModal!: ChangePlayersModalComponent
@@ -150,22 +174,180 @@ export class GameComponent implements OnInit, OnDestroy{
     endingMatch: boolean = false
     
     ngOnInit(): void {
-        this.players = this.globalService.currentPlayers()
+        const routeId = Number(this.route.snapshot.paramMap.get('matchId')) || null
         const currentMatch = this.globalService.currentMatch()
         console.log("dati partita corrente", currentMatch)
-        if (currentMatch?.sets_to_win) {
-            this.format = {
-                setsToWin: currentMatch.sets_to_win,
-                setPoints: currentMatch.set_points ?? DEFAULT_FORMAT.setPoints,
-                tiebreakPoints: currentMatch.tiebreak_points ?? DEFAULT_FORMAT.tiebreakPoints,
-            }
+        // Coming from a reload, a bookmark or the "Riprendi scout" button: load the match from the server
+        if (routeId && (currentMatch?.id !== routeId || currentMatch?.live_state)) {
+            this.resume(routeId)
+            return
         }
+        this.players = this.globalService.currentPlayers()
+        this.readFormat(currentMatch)
         this.startNewSet()
     }
 
-    // A left match cannot be resumed: forget it, so coming back does not reuse its sets
+    private readFormat(match: any): void {
+        if (match?.sets_to_win) {
+            this.format = {
+                setsToWin: match.sets_to_win,
+                setPoints: match.set_points ?? DEFAULT_FORMAT.setPoints,
+                tiebreakPoints: match.tiebreak_points ?? DEFAULT_FORMAT.tiebreakPoints,
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Resume: the live state is saved locally at once and on the server shortly after
+    // ---------------------------------------------------------------------------------------
+
+    resuming: boolean = false
+    private saveTimer: any = null
+
+    private get matchId(): number | null {
+        return this.globalService.currentMatch()?.id || null
+    }
+
+    private buildState(): LiveState {
+        return {
+            v: 1,
+            savedAt: Date.now(),
+            setId: this.globalService.currentSet()?.id ?? null,
+            setNumber: this.setNumber,
+            score: { ...this.score },
+            serving: this.serving,
+            firstServer: this.firstServer,
+            rotation: this.rotation,
+            index: this.index,
+            sideSwitched: this.sideSwitched,
+            lineup: this.starting_players.map(p => p.id),
+            libero: this.libero?.id ?? null,
+            benchLibero: this.bench_libero?.id ?? null,
+            bench: this.bench_players.map(p => p.id),
+            counters: { changes: this.changeCounter, doubleChanges: this.doubleChangeCounter, timeouts: this.leftTimeOuts, yellow: this.y_card_counter, red: this.r_card_counter },
+            results: this.results,
+            endSetClicked: this.endSetClicked,
+            allSetsPlayed: this.allSetsPlayed,
+        }
+    }
+
+    saveState(): void {
+        const id = this.matchId
+        if (!id || this.endingMatch || this.resuming) return
+        const state = this.buildState()
+        try { localStorage.setItem(STATE_KEY + id, JSON.stringify(state)) } catch {}
+        clearTimeout(this.saveTimer)
+        this.saveTimer = setTimeout(() => this.pushState(id, state), 800)
+    }
+
+    private pushState(id: number, state: LiveState): void {
+        this.saveTimer = null
+        if (this.endingMatch) return
+        this.matchesService.updateMatch(id, { live_state: state }).subscribe({
+            next: () => this.clearError('snapshot'),
+            error: (err) => this.showError('snapshot', 'Stato della partita non salvato sul server: la ripresa da un altro dispositivo potrebbe non essere aggiornata', err),
+        })
+    }
+
+    private readLocalState(id: number): LiveState | null {
+        try {
+            const raw = localStorage.getItem(STATE_KEY + id)
+            return raw ? JSON.parse(raw) : null
+        } catch { return null }
+    }
+
+    private resume(id: number): void {
+        this.resuming = true
+        forkJoin({ match: this.matchesService.getMatch(id), sets: this.matchesService.getMatchSets(id) }).pipe(
+            switchMap(({ match, sets }) => this.globalService.getPlayersByTeamId(match.team_id).pipe(
+                switchMap(players => [{ match, sets, players }])
+            ))
+        ).subscribe({
+            next: ({ match, sets, players }) => {
+                this.globalService.currentMatch.set(match)
+                this.globalService.currentPlayers.set(players)
+                this.players = players
+                this.readFormat(match)
+                // The newest between the local copy and the server copy
+                const local = this.readLocalState(id)
+                const server = match.live_state as LiveState | null
+                const state = [local, server].filter((s): s is LiveState => !!s && s.v === 1).sort((a, b) => b.savedAt - a.savedAt)[0]
+                if (!state) {
+                    this.resuming = false
+                    if (sets.length === 0) {
+                        this.startNewSet() // created but never started
+                    } else {
+                        this.showError('match', 'Questa partita non ha uno stato salvato e non può essere ripresa: aprila da Partite → Dettagli')
+                    }
+                    return
+                }
+                this.applyState(state, players)
+                const set = sets.find(s => s.id === state.setId) ?? null
+                this.globalService.currentSet.set(set)
+                if (!set) {
+                    this.finishResume()
+                    return
+                }
+                this.touchesService.getSetTouches(set.id).subscribe({
+                    next: (touches) => {
+                        // Earlier rallies: palla contesa only works on rallies recorded after the resume
+                        this.touches = touches.map(t => ({ ...t, seq: ++this.touchSeq, rally: -1 }))
+                        this.finishResume()
+                    },
+                    error: (err) => {
+                        this.showError('resume', 'Tocchi del set non caricati: undo non disponibile per i tocchi precedenti', err)
+                        this.finishResume()
+                    }
+                })
+            },
+            error: (err) => {
+                this.resuming = false
+                this.showError('match', 'Partita non caricata: controlla la connessione e ricarica la pagina', err)
+            }
+        })
+    }
+
+    private applyState(s: LiveState, players: Player[]): void {
+        const byId = (id: number | null) => players.find(p => p.id === id) ?? null
+        this.setNumber = s.setNumber
+        this.score = { ...s.score }
+        this.serving = s.serving
+        this.firstServer = s.firstServer
+        this.rotation = s.rotation
+        this.index = s.index
+        this.sideSwitched = s.sideSwitched
+        this.starting_players = s.lineup.map(byId).filter((p): p is Player => !!p)
+        this.libero = byId(s.libero)
+        this.bench_libero = byId(s.benchLibero)
+        this.bench_players = s.bench.map(byId).filter((p): p is Player => !!p)
+        this.changeCounter = s.counters.changes
+        this.doubleChangeCounter = s.counters.doubleChanges
+        this.leftTimeOuts = s.counters.timeouts
+        this.y_card_counter = s.counters.yellow
+        this.r_card_counter = s.counters.red
+        this.results = s.results
+        this.endSetClicked = s.endSetClicked
+        this.allSetsPlayed = s.allSetsPlayed
+        this.rallySeq = 0
+    }
+
+    private finishResume(): void {
+        this.resuming = false
+        this.updateSuggestion()
+        this.showInfo('Partita ripresa')
+        this.saveState()
+        this.cdr.detectChanges()
+    }
+
+    // Leaving clears the global match state; "Riprendi scout" reloads it from the server
     ngOnDestroy(): void {
         clearTimeout(this.infoTimer)
+        // Send a pending live-state save now, so "Riprendi scout" finds the latest state
+        const id = this.matchId
+        if (this.saveTimer && id && !this.endingMatch) {
+            clearTimeout(this.saveTimer)
+            this.pushState(id, this.buildState())
+        }
         this.globalService.resetAll()
     }
 
@@ -180,6 +362,7 @@ export class GameComponent implements OnInit, OnDestroy{
         this.lastAutoPoint = null
         this.closeRally()
         this.updateSuggestion()
+        this.saveState()
     }
 
     private awardPoint(winner: Team, cause: string = '', auto: boolean = false): void {
@@ -196,6 +379,7 @@ export class GameComponent implements OnInit, OnDestroy{
             this.showInfo('Tie-break a 8 punti: cambio campo')
         }
         this.updateSuggestion()
+        this.saveState()
         const setWon = setWinner(this.score, this.setNumber, this.format)
         if (setWon && !this.endSetClicked && !this.endingSet) {
             const who = setWon === 'home' ? 'CASA' : 'OSPITI'
@@ -210,6 +394,7 @@ export class GameComponent implements OnInit, OnDestroy{
         this.serving = team
         this.lastAutoPoint = null
         this.updateSuggestion()
+        this.saveState()
     }
 
     get serverIdx(): number {
@@ -294,19 +479,20 @@ export class GameComponent implements OnInit, OnDestroy{
         return !!this.globalService.currentMatch()?.id
     }
 
+    // The live state is saved, so leaving or reloading is safe unless some touch is not saved yet
     @HostListener('window:beforeunload', ['$event'])
     onBeforeUnload(event: BeforeUnloadEvent): void {
-        if (this.gameInProgress) {
+        if (this.gameInProgress && (this.busy || this.failedTouches.length > 0)) {
             event.preventDefault()
             event.returnValue = ''
         }
     }
 
     canLeave(): boolean {
-        if (!this.gameInProgress) return true
+        if (!this.gameInProgress || (!this.busy && this.failedTouches.length === 0)) return true
         const n = this.failedTouches.length
-        const unsaved = n > 0 ? (n === 1 ? ' 1 tocco non salvato andrà perso.' : ` ${n} tocchi non salvati andranno persi.`) : ''
-        return confirm(`La partita è in corso: se esci non potrai riprenderla.${unsaved} Uscire comunque?`)
+        const unsaved = n > 0 ? (n === 1 ? ' 1 tocco non salvato andrà perso.' : ` ${n} tocchi non salvati andranno persi.`) : ' Alcuni tocchi sono ancora in salvataggio.'
+        return confirm(`${unsaved.trim()} Uscire comunque? La partita si potrà riprendere da Partite → Riprendi scout.`)
     }
 
     // Errors stay on screen until the same operation succeeds or the scout closes them
@@ -394,6 +580,7 @@ export class GameComponent implements OnInit, OnDestroy{
     // A player who leaves the court loses the selection for good (not only while off court)
     onLineupChanged(): void {
         if (!this.selectedOnCourt) this.selectedPlayer = null
+        this.saveState()
     }
 
     onChange(double: boolean): void {
@@ -405,6 +592,7 @@ export class GameComponent implements OnInit, OnDestroy{
     
     togglePos(): void {
         this.index = this.index === 0 ? 1 : 0
+        this.saveState()
         this.cdr.detectChanges()
     }
 
@@ -426,6 +614,7 @@ export class GameComponent implements OnInit, OnDestroy{
                 break
         }
         this.eventOccurred = {event_type: ''}
+        this.saveState()
     }
 
     // Replayed point: delete only the touches of the rally in progress
@@ -591,6 +780,7 @@ export class GameComponent implements OnInit, OnDestroy{
         this.rotation = (this.rotation + 1) % 6
         this.lastAutoPoint = null
         this.updateSuggestion()
+        this.saveState()
     }
 
     playerPos(i: number): [number, number] {
@@ -604,6 +794,7 @@ export class GameComponent implements OnInit, OnDestroy{
         this.bench_players = event.benchPlayers
         this.bench_libero = event.benchLibero
         this.updateSuggestion()
+        this.saveState()
     }
 
     startNewSet(){
@@ -697,6 +888,7 @@ export class GameComponent implements OnInit, OnDestroy{
         this.endSetClicked = false
         this.clearError('locked')
         this.updateSuggestion()
+        this.saveState()
 
         this.cdr.detectChanges()
     }
@@ -748,6 +940,7 @@ export class GameComponent implements OnInit, OnDestroy{
                     this.showInfo(`Partita vinta da ${won === 'home' ? 'CASA' : 'OSPITI'} ${sets.home}-${sets.guests}: premi FINE MATCH`, 10000)
                 }
                 this.handleNextSet()
+                this.saveState()
             },
             error: (err) => {
                 this.endingSet = false
@@ -761,9 +954,10 @@ export class GameComponent implements OnInit, OnDestroy{
         if(!match || !match.id)
             this.showError('match', 'Nessuna partita a cui salvare i risultati')
         else
-        this.matchesService.updateMatch(match.id, { results: results }).subscribe({
+        this.matchesService.updateMatch(match.id, { results: results, live_state: null }).subscribe({
             next: (res) => {
                 console.log("Risultati aggiornati:", res)
+                try { localStorage.removeItem(STATE_KEY + match.id) } catch {}
                 this.globalService.resetAll()
                 this.router.navigate(['/'])
             },
@@ -802,6 +996,8 @@ export class GameComponent implements OnInit, OnDestroy{
     // The last played set is already saved by FINE SET; an empty set opened by mistake is removed
     endMatch() {
         this.endingMatch = true
+        clearTimeout(this.saveTimer) // a late live-state save must not bring the match back
+        this.saveTimer = null
         const current = this.globalService.currentSet()
         if (!this.endSetClicked && current?.id) {
             this.setsService.deleteSet(current.id).subscribe({

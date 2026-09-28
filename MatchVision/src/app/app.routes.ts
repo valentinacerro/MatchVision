@@ -18,6 +18,8 @@ export const routes: Routes = [
   { path: 'register', component: RegisterComponent },
   { path: 'statistics', component: StatisticsComponent },
   { path: 'game', component: GameComponent, canDeactivate: [(game: GameComponent) => game.canLeave()] },
+  // The match id in the URL lets a reload (or another device) resume the match
+  { path: 'game/:matchId', component: GameComponent, canDeactivate: [(game: GameComponent) => game.canLeave()] },
   { path: 'thanks', component: ThanksComponent },
 
   // Players

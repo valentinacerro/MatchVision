@@ -8,6 +8,9 @@ export class Match {
         // Match format (sets to win, points per set, deciding set)
         public sets_to_win?: number,
         public set_points?: number,
-        public tiebreak_points?: number
+        public tiebreak_points?: number,
+        public results?: { home_score: number; guest_score: number }[],
+        // Saved while the match is being scouted, null when not started or over
+        public live_state?: any
     ) {}
 }

@@ -54,7 +54,7 @@
             <button type="button" class="btn btn-primary" [disabled]="newMatch.team_id === 0 || newMatch.name === '' || saving || matchInfoSaved"
                 (click)="saveMatch(matchForm, modal)">{{ saving ? 'Salvataggio…' : (createdMatch && !matchInfoSaved ? 'Riprova' : 'Salva') }}</button>
             <button type="button" class="btn btn-primary" [disabled]="!matchInfoSaved"
-                [routerLink]="['/game/']" routerLinkActive="router-link-active" (click)="modal.close('Save click')">Inizia</button>
+                [routerLink]="['/game', createdMatch?.id]" routerLinkActive="router-link-active" (click)="modal.close('Save click')">Inizia</button>
         </div>
 
         </form>
