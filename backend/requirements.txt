@@ -1,0 +1,7 @@
+Django==5.2.5
+djangorestframework==3.16.1
+django-cors-headers==4.7.0
+pandas==2.3.2
+numpy==2.3.3
+SQLAlchemy==2.0.43
+psycopg2-binary==2.9.10

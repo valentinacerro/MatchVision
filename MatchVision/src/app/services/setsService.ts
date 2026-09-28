@@ -2,13 +2,14 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { Set } from '../Models/Set';
+import { API_URL } from './apiConfig';
 
 @Injectable({
     providedIn: 'root'
 })
 export class SetsService {
 
-    private apiUrl = 'http://localhost:8001';
+    private apiUrl = API_URL;
     
     constructor(private http: HttpClient) {}
 

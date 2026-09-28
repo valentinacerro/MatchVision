@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -20,12 +21,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-d)q0c!$)((bkm)@*nrin2i^bkc4a^&fl$zyzr@-p@zqs4a=biq'
+# Values come from environment variables; the defaults keep local development working
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-d)q0c!$)((bkm)@*nrin2i^bkc4a^&fl$zyzr@-p@zqs4a=biq')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DJANGO_DEBUG', '1') == '1'
 
-ALLOWED_HOSTS = []
+# e.g. DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.20 to use the app from a tablet on the LAN
+ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,[::1]').split(',')
 
 
 # Application definition
@@ -85,11 +88,11 @@ WSGI_APPLICATION = 'MatchVision.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'MatchVisionDB',
-        'USER': 'postgres',
-        'PASSWORD': 'adminPostgres',
-        'HOST': 'localhost',
-        'PORT': '5432',
+        'NAME': os.environ.get('DB_NAME', 'MatchVisionDB'),
+        'USER': os.environ.get('DB_USER', 'postgres'),
+        'PASSWORD': os.environ.get('DB_PASSWORD', 'adminPostgres'),
+        'HOST': os.environ.get('DB_HOST', 'localhost'),
+        'PORT': os.environ.get('DB_PORT', '5432'),
     }
 }
 

@@ -11,6 +11,7 @@ import { PlayersService } from "./playersService"
 import { TeamsService } from "./teamsService"
 import { MatchesService } from "./matchesService"
 import { Observable } from "rxjs"
+import { API_URL } from './apiConfig'
 
 @Injectable({
     providedIn: 'root' 
@@ -49,7 +50,7 @@ export class GlobalService {
     currentPlayers = signal<Player[]>([])
     currentUserId = signal<number | null>(null)
 
-    private apiUrl = 'http://localhost:8001'
+    private apiUrl = API_URL
 
     constructor(private http: HttpClient) {}
 

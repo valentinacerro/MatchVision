@@ -1,17 +1,18 @@
 import pandas as pd
-import sqlalchemy
+from django.conf import settings
 from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
 
-# DB PARAMS
-database="MatchVisionDB"
-host="localhost"
-user="postgres"
-password="adminPostgres"
-port="5432"
-
-# Connection creation
-conn = create_engine(f'postgresql://{user}:{password}@{host}:{port}/{database}')
+# Same database as Django (settings.DATABASES), so there is one place to configure it
+db = settings.DATABASES['default']
+conn = create_engine(URL.create(
+    'postgresql',
+    username=db['USER'],
+    password=db['PASSWORD'],
+    host=db['HOST'],
+    port=int(db['PORT']) if db['PORT'] else None,
+    database=db['NAME'],
+))
 
 def create_table_match_stats(match_id):
 

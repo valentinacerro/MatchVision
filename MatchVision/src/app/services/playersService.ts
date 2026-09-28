@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 import { Match } from '../Models/Match';
 import { Player } from '../Models/Player';
 import { Team } from '../Models/Team';
+import { API_URL } from './apiConfig';
 
 @Injectable({
     providedIn: 'root' 
@@ -11,7 +12,7 @@ import { Team } from '../Models/Team';
 
 export class PlayersService {
 
-    private apiUrl = 'http://localhost:8001';
+    private apiUrl = API_URL;
 
     constructor(private http: HttpClient) {}
 

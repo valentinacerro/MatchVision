@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { Touch } from '../Models/Touch';
+import { API_URL } from './apiConfig';
 
 @Injectable({
   providedIn: 'root'
@@ -9,7 +10,7 @@ import { Touch } from '../Models/Touch';
 
 export class TouchesService {
 
-    private apiUrl = 'http://localhost:8001'
+    private apiUrl = API_URL
 
     constructor(private http: HttpClient) {}
 
