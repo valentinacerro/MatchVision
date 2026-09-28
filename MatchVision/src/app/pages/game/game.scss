@@ -164,15 +164,27 @@ body {
     border-radius: 7px;
 }
 
+// Compact and over the header, so score and SET label stay visible
 .game-error {
     position: fixed;
-    top: 1rem;
+    top: 0.3rem;
     left: 50%;
     transform: translateX(-50%);
     z-index: 2000;
-    min-width: 50%;
-    font-size: 1.2rem;
+    min-width: 40%;
+    max-width: 70%;
+    margin: 0;
+    padding: 0.4rem 0.8rem;
+    font-size: 1rem;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.game-error.alert-dismissible {
+    padding-right: 2.5rem;
+}
+
+.game-error .btn-close {
+    padding: 0.7rem;
 }
 
 .del-touch-btn {
