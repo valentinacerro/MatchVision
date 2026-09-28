@@ -152,8 +152,8 @@ GRADES = ['++', '+', '!', '—', '— —']
 def percent(part, total):
     # Percent with one decimal, halves rounded away from zero (6.25 -> 6.3) as done by hand;
     # pandas' round() would give 6.2 (round half to even)
-    value = part / total * 100
-    return (np.sign(value) * np.floor(value.abs() * 10 + 0.5) / 10).astype(float)
+    # Scale before dividing, so an exact half (23/80 = 28.75) stays exact in floating point
+    return (np.sign(part) * np.floor(part.abs() * 1000 / total + 0.5) / 10).astype(float)
 
 
 def create_kpi_table(touches):
@@ -206,7 +206,8 @@ def create_kpi_table(touches):
 
     # 5. Order: fundamental in order of play, team row last, players by shirt number
     table['order'] = table['fundamental'].map({f: i for i, f in enumerate(FUNDAMENTALS)}).fillna(len(FUNDAMENTALS))
-    table = table.sort_values(['order', 'team', 'number'], na_position='last').drop(columns='order')
+    table['no_player'] = table['player_id'].isna() & ~table['team'].astype(bool)
+    table = table.sort_values(['order', 'team', 'no_player', 'number'], na_position='last').drop(columns=['order', 'no_player'])
 
     # NaN is not valid JSON: turn missing values into None
     table = table.astype(object).where(pd.notna(table), None)
