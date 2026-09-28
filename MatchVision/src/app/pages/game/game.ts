@@ -199,7 +199,8 @@ export class GameComponent implements OnInit, OnDestroy{
 
     canLeave(): boolean {
         if (!this.gameInProgress) return true
-        const unsaved = this.failedTouches.length > 0 ? ` ${this.failedTouches.length} tocchi non salvati andranno persi.` : ''
+        const n = this.failedTouches.length
+        const unsaved = n > 0 ? (n === 1 ? ' 1 tocco non salvato andrà perso.' : ` ${n} tocchi non salvati andranno persi.`) : ''
         return confirm(`La partita è in corso: se esci non potrai riprenderla.${unsaved} Uscire comunque?`)
     }
 
@@ -276,6 +277,10 @@ export class GameComponent implements OnInit, OnDestroy{
 
     // Replayed point: delete only the touches of the rally in progress
     cancelCurrentRally(): void {
+        if (this.endSetClicked) {
+            this.showError('locked', 'Set chiuso: premi NUOVO SET per continuare')
+            return
+        }
         if (this.busy) {
             this.showError('busy', 'Salvataggio in corso, riprova tra un attimo')
             return
@@ -290,7 +295,7 @@ export class GameComponent implements OnInit, OnDestroy{
         const count = total === 1 ? '1 tocco' : `${total} tocchi`
         if (!confirm(`Palla contesa: eliminare ${count} del rally in corso?`)) return
         // Unsaved touches of this rally are dropped only after the confirm
-        this.failedTouches = this.failedTouches.filter(t => t.rally !== this.rallySeq)
+        this.dropUnsaved(rallyFailed)
         rallyTouches.forEach(t => this.deleteTouch(t))
     }
 
@@ -312,7 +317,7 @@ export class GameComponent implements OnInit, OnDestroy{
                     return
                 }
                 this.pendingDeletes--
-                if (!this.busy) this.clearError('busy')
+                this.refreshStatus()
                 this.showError(key, `Tocco non eliminato (${this.touchLabel(touch)}): riprova`, err)
             }
         })
@@ -323,7 +328,7 @@ export class GameComponent implements OnInit, OnDestroy{
         this.touches = this.touches.filter(t => t.id !== touch.id)
         console.log('Tocco eliminato', touch.id)
         this.clearError(key)
-        if (!this.busy) this.clearError('busy')
+        this.refreshStatus()
         this.cdr.detectChanges()
     }
 
@@ -357,15 +362,15 @@ export class GameComponent implements OnInit, OnDestroy{
                 if (touch.set === this.globalService.currentSet()?.id)
                     this.touches = [...this.touches, { ...res, seq, rally }].sort((a, b) => a.seq - b.seq)
                 this.clearError('touch')
-                if (!this.busy) this.clearError('busy')
-                if (!this.busy && this.failedTouches.length === 0) this.clearError('unsaved')
+                this.clearError('rally')
+                this.refreshStatus()
                 this.cdr.detectChanges()
             },
             error: (err) => {
                 console.error('Errore salvataggio nuovo tocco', err)
                 this.pendingTouches = this.pendingTouches.filter(t => t !== touch)
                 this.failedTouches = [...this.failedTouches, { ...touch, uncertain: touch.uncertain || err?.name === 'TimeoutError' }]
-                if (!this.busy) this.clearError('busy')
+                this.refreshStatus()
                 this.cdr.detectChanges()
             }
         });
@@ -379,12 +384,39 @@ export class GameComponent implements OnInit, OnDestroy{
     }
 
     discardFailedTouches(): void {
-        const warning = this.failedTouches.some(t => t.uncertain)
-            ? 'Alcuni tocchi potrebbero essere già arrivati al server e restare nelle statistiche: meglio Riprova e poi annullarli. '
-            : ''
-        if (!confirm(`${warning}Scartare i tocchi non salvati?`)) return
-        this.failedTouches = []
-        if (!this.busy) this.clearError('unsaved')
+        if (!confirm('Scartare i tocchi non salvati?')) return
+        this.dropUnsaved(this.failedTouches)
+    }
+
+    private dropUnsaved(list: TrackedTouch[]): void {
+        this.failedTouches = this.failedTouches.filter(t => !list.includes(t))
+        list.filter(t => t.uncertain).forEach(t => this.removeUncertainTouch(t))
+        this.refreshStatus()
+    }
+
+    // A touch that timed out may exist on the server anyway: re-send it (same client_id,
+    // so the server returns it instead of saving it twice) and delete what comes back
+    private removeUncertainTouch(touch: TrackedTouch): void {
+        const { seq, rally, uncertain, ...payload } = touch
+        this.pendingDeletes++
+        this.touchesService.createTouch(payload).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
+            next: (res) => {
+                this.pendingDeletes--
+                this.deleteTouch({ ...res, seq, rally })
+            },
+            error: (err) => {
+                this.pendingDeletes--
+                this.failedTouches = [...this.failedTouches, touch]
+                this.refreshStatus()
+                this.showError('discard', 'Tocco incerto non scartato: riprova più tardi', err)
+            }
+        })
+    }
+
+    // Status messages that only make sense while something is pending or unsaved
+    private refreshStatus(): void {
+        if (!this.busy) this.clearError('busy')
+        if (!this.busy && this.failedTouches.length === 0) this.clearError('unsaved')
     }
 
     // Rotation of players: the player in position 2 goes to 1, 1 goes to 6, ...
@@ -436,7 +468,8 @@ export class GameComponent implements OnInit, OnDestroy{
     
     createSet(set: Set) {
         
-        if((this.score.home === 0 && this.score.guests === 0) && this.setNumber != 1){  
+        const lastResult = this.results.at(-1)
+        if(lastResult && lastResult.home_score === 0 && lastResult.guest_score === 0 && this.setNumber != 1){  
             this.showError('set', 'Il set precedente è finito 0-0: nuovo set non creato')
             return
         }else if (!this.creatingSet){  
@@ -558,12 +591,17 @@ export class GameComponent implements OnInit, OnDestroy{
     }
 
     get canEndMatch(): boolean {
-        return !this.endingMatch && this.results.length > 0 && (this.endSetClicked || this.currentSetUnstarted || !this.hasActiveSet)
+        return !this.endingMatch && !this.creatingSet && !this.endingSet && this.results.length > 0
+            && (this.endSetClicked || this.currentSetUnstarted || !this.hasActiveSet)
     }
 
     confirmEndMatch() {
-        if (this.busy || this.failedTouches.length > 0) {
-            this.showError('unsaved', 'Ci sono tocchi in salvataggio o non salvati: premi Riprova o Scarta prima di terminare')
+        if (this.failedTouches.length > 0) {
+            this.showError('unsaved', 'Ci sono tocchi non salvati: premi Riprova o Scarta prima di terminare')
+            return
+        }
+        if (this.busy) {
+            this.showError('unsaved', 'Salvataggio in corso: attendi e premi di nuovo FINE MATCH')
             return
         }
         const emptySet = this.currentSetUnstarted ? ' Il set vuoto appena aperto verrà eliminato.' : ''
@@ -594,6 +632,7 @@ export class GameComponent implements OnInit, OnDestroy{
 
     private afterEmptySetRemoved(): void {
         this.globalService.currentSet.set(null)
+        this.endSetClicked = true // back to the state after the last FINE SET, in case saving the results fails
         this.updateMatchResults(this.results)
     }
 }

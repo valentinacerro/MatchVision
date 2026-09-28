@@ -9,15 +9,15 @@
 
         @if (errorList.length > 0 || failedTouches.length > 0) {
             <div class="alert alert-danger game-error" [class.alert-dismissible]="errorList.length > 0" role="alert">
-                @for (message of errorList; track message) {
-                    <div>{{ message }}</div>
-                }
                 @if (failedTouches.length > 0) {
                     <div class="d-flex align-items-center flex-wrap gap-2">
                         <span>{{ failedTouches.length === 1 ? 'Tocco NON salvato' : failedTouches.length + ' tocchi NON salvati' }}: <strong>{{ failedTouchesText }}</strong></span>
                         <button type="button" class="btn btn-light btn-sm" (click)="retryFailedTouches()">Riprova</button>
                         <button type="button" class="btn btn-outline-dark btn-sm" (click)="discardFailedTouches()">Scarta</button>
                     </div>
+                }
+                @for (message of errorList; track message) {
+                    <div>{{ message }}</div>
                 }
                 @if (errorList.length > 0) {
                     <button type="button" class="btn-close" aria-label="Chiudi" (click)="errors = {}"></button>
