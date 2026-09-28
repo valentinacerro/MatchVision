@@ -32,7 +32,7 @@ class MatchSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Match
-        fields = ['id', 'name', 'timestamp', 'team', 'team_id', 'results']
+        fields = ['id', 'name', 'timestamp', 'team', 'team_id', 'results', 'sets_to_win', 'set_points', 'tiebreak_points']
 
 
 class MatchUpdateSerializer(serializers.ModelSerializer):

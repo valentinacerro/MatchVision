@@ -74,6 +74,10 @@ class Match(models.Model):
     timestamp = models.DateTimeField(default=timezone.now)
     team = models.ForeignKey('Team', on_delete=models.CASCADE, related_name='matches')
     results = models.JSONField(default=list, blank=True)
+    # Match format: sets needed to win, points of a normal set and of the deciding set
+    sets_to_win = models.PositiveSmallIntegerField(default=3, verbose_name="Set per vincere")
+    set_points = models.PositiveSmallIntegerField(default=25, verbose_name="Punti per set")
+    tiebreak_points = models.PositiveSmallIntegerField(default=15, verbose_name="Punti tie-break")
 
     class Meta:
         ordering = ["-timestamp"]
