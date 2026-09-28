@@ -126,7 +126,8 @@ def createMatch(request):
 @api_view(['PUT'])
 def updateMatch(request, pk):
     match = Match.objects.get(pk = pk)
-    serializer = MatchUpdateSerializer(match, data = request.data)
+    # partial: the live state is saved on its own, without resending the results
+    serializer = MatchUpdateSerializer(match, data = request.data, partial = True)
     if serializer.is_valid():
         serializer.save()
         return Response(serializer.data)
@@ -348,3 +349,10 @@ def getMatchKpi(request, pk):
 @api_view(['GET'])
 def getSetKpi(request, pk):
     return Response(create_kpi_table(Touch.objects.filter(set_id=pk)))
+
+
+# Touches of a set in the order they were recorded (to resume a match)
+@api_view(['GET'])
+def getSetTouches(request, pk):
+    touches = Touch.objects.filter(set_id=pk).order_by('id')
+    return Response(TouchSerializer(touches, many=True).data)

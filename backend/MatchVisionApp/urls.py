@@ -27,6 +27,7 @@ urlpatterns = [
     path('sets/create/', views.createSet),
     path('sets/update/<int:pk>/', views.updateSet),
     path('sets/delete/<int:pk>/', views.deleteSet),
+    path('sets/<int:pk>/touches/', views.getSetTouches),
 
     # Events
     # path('events/', views.getEvents),

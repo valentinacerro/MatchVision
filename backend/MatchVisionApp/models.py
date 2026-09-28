@@ -78,6 +78,9 @@ class Match(models.Model):
     sets_to_win = models.PositiveSmallIntegerField(default=3, verbose_name="Set per vincere")
     set_points = models.PositiveSmallIntegerField(default=25, verbose_name="Punti per set")
     tiebreak_points = models.PositiveSmallIntegerField(default=15, verbose_name="Punti tie-break")
+    # Live state of a match being scouted (lineup, score, serve, rotation...), so it can be resumed.
+    # Null when the match has not started or is over.
+    live_state = models.JSONField(null=True, blank=True, verbose_name="Stato live")
 
     class Meta:
         ordering = ["-timestamp"]
