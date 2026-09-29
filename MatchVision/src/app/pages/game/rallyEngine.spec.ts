@@ -85,7 +85,8 @@ describe('rallyEngine', () => {
         it('follows the order of play in the full profile', () => {
             expect(suggestFundamental('guests', ['Ricezione'], false)).toBe('Alzata')
             expect(suggestFundamental('guests', ['Ricezione', 'Alzata'], false)).toBe('Attacco')
-            expect(suggestFundamental('home', ['Battuta'], false)).toBe('Difesa')
+            expect(suggestFundamental('home', ['Battuta'], false)).toBe('Muro')
+            expect(suggestFundamental('home', ['Battuta', 'Muro'], false)).toBe('Difesa')
             expect(suggestFundamental('guests', ['Ricezione', 'Alzata', 'Attacco'], false)).toBe('Muro')
         })
         it('suggests the attack after the first touch in the solo profile', () => {

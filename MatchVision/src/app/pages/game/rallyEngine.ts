@@ -84,7 +84,7 @@ export function suggestFundamental(serving: Team, rallyFundamentals: string[], s
     if (!last) return serving === 'home' ? 'Battuta' : 'Ricezione'
     if (solo) return 'Attacco'
     const next: { [f: string]: string } = {
-        Battuta: 'Difesa',    // the opponent receives and attacks: our next touch is a dig
+        Battuta: 'Muro',      // the opponent receives and attacks: first our block (as after our attack)
         Ricezione: 'Alzata',
         Difesa: 'Alzata',
         Alzata: 'Attacco',
