@@ -19,7 +19,7 @@
     <div class="fundamentals">
         @for (f of fundamentals; track f) {
             <button type="button" class="btn fundamental-btn" [class.selected]="fundamental === f" [class.suggested]="suggested && fundamental === f"
-                [disabled]="disabled" (click)="selectFundamental(f)">{{ f }}</button>
+                [disabled]="disabled || forbidden(f)" (click)="selectFundamental(f)">{{ f }}</button>
         }
     </div>
 

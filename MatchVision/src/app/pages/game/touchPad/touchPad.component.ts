@@ -18,6 +18,7 @@ export class TouchPadComponent implements OnChanges {
 
     @Input() player: Player | null = null
     @Input() disabled: boolean = false
+    @Input() isLibero: boolean = false // the libero may not serve or block
     // Most likely next fundamental for each profile; a new object means "apply it now"
     @Input() suggestion: { completo: string; solo: string; id: number } | null = null
     @Output() touchEntered = new EventEmitter<{fundamental: string; outcome: string}>()
@@ -40,6 +41,10 @@ export class TouchPadComponent implements OnChanges {
 
     ngOnChanges(changes: SimpleChanges): void {
         if (changes['player']) this.hint = ''
+        if (changes['isLibero'] && this.isLibero && this.forbidden(this.fundamental)) {
+            this.fundamental = ''
+            this.suggested = false
+        }
         // A closed set starts the next one clean
         if (changes['disabled'] && this.disabled) {
             this.fundamental = ''
@@ -50,8 +55,10 @@ export class TouchPadComponent implements OnChanges {
     }
 
     private applySuggestion(): void {
+        // Never replace a fundamental the scout picked
+        if (this.fundamental && !this.suggested) return
         const f = this.profile === 'solo' ? this.suggestion?.solo : this.suggestion?.completo
-        if (f && this.fundamentals.includes(f)) {
+        if (f && this.fundamentals.includes(f) && !this.forbidden(f)) {
             this.fundamental = f
             this.suggested = true
         } else if (this.suggested) {
@@ -77,7 +84,13 @@ export class TouchPadComponent implements OnChanges {
         this.hint = ''
     }
 
+    forbidden(f: string): boolean {
+        return this.isLibero && (f === 'Battuta' || f === 'Muro')
+    }
+
     selectGrade(outcome: string): void {
+        // A second tap right after a save is a double tap: ignore it, even if a player is preselected
+        if (Date.now() - this.lastSave < 600) return
         if (this.disabled) return
         if (!this.player) {
             // A second tap right after a save is a double tap, not a mistake: no hint
@@ -86,6 +99,10 @@ export class TouchPadComponent implements OnChanges {
         }
         if (!this.fundamental) {
             this.hint = 'Scegli il fondamentale'
+            return
+        }
+        if (this.forbidden(this.fundamental)) {
+            this.hint = 'Il libero non può battere né murare'
             return
         }
         this.touchEntered.emit({ fundamental: this.fundamental, outcome })

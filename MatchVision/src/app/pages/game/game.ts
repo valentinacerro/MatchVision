@@ -18,7 +18,7 @@ import { GlobalService } from '../../services/globalService'
 import { MatchesService } from '../../services/matchesService'
 import { forkJoin, switchMap, timeout } from 'rxjs'
 import {
-    afterPoint, DEFAULT_FORMAT, MatchFormat, matchWinner, serverIndex, setsWon, setWinner,
+    afterPoint, DEFAULT_FORMAT, isDecidingSet, MatchFormat, matchWinner, serverIndex, setsWon, setWinner,
     sideSwitchDue, suggestFundamental, Team, terminalWinner,
 } from './rallyEngine'
 
@@ -29,9 +29,15 @@ type TrackedTouch = Touch & { seq: number; rally: number; uncertain?: boolean }
 const REQUEST_TIMEOUT_MS = 15000
 const STATE_KEY = 'matchvision.live.' // + match id, local copy of the live state
 
-// Everything needed to resume a match that is being scouted (touches are on the server already)
+// Game state before a score change, so it can be taken back
+interface Snapshot { home: number; guests: number; serving: Team; rotation: number; rallySeq: number; index: number; sideSwitched: boolean }
+// A score change caused by a touch (cause = its client_id) or by the scout (cause = null)
+interface ScoreEvent { cause: string | null; prev: Snapshot }
+
+// Everything needed to resume a match that is being scouted (saved touches are on the server)
 interface LiveState {
     v: 1
+    rev: number // grows at every save; the server refuses an older revision
     savedAt: number
     setId: number | null
     setNumber: number
@@ -49,6 +55,9 @@ interface LiveState {
     results: { home_score: number; guest_score: number }[]
     endSetClicked: boolean
     allSetsPlayed: boolean
+    scoreEvents: ScoreEvent[]
+    rallyTouchIds: string[] // client ids of the touches of the rally in progress
+    unsent: TrackedTouch[]  // pending or failed touches, re-sent on resume
 }
 
 function newClientId(): string {
@@ -118,7 +127,8 @@ export class GameComponent implements OnInit, OnDestroy{
     format: MatchFormat = DEFAULT_FORMAT
     sideSwitched: boolean = false
     suggestion = { completo: '', solo: '', id: 0 }
-    private lastAutoPoint: { touchSeq: number; prev: { home: number; guests: number; serving: Team; rotation: number; rallySeq: number } } | null = null
+    // Score changes of this set, newest last: undoing a touch takes back its point only if it is the latest change
+    private scoreEvents: ScoreEvent[] = []
     info: string = ''
     private infoTimer: any = null
     private autoSelected: Player | null = null // the server preselected by the app, not by the scout
@@ -155,7 +165,7 @@ export class GameComponent implements OnInit, OnDestroy{
     changeCounter: number = 6
     doubleChangeCounter: number = 2
     // To register events
-    leftTimeOuts: number = 3
+    leftTimeOuts: number = 2 // FIVB: two per set
     y_card_counter: number = 0
     r_card_counter: number = 0
     
@@ -203,6 +213,9 @@ export class GameComponent implements OnInit, OnDestroy{
 
     resuming: boolean = false
     private saveTimer: any = null
+    private retryTimer: any = null
+    private rev: number = 0
+    private conflict: boolean = false // another device saved a newer state: stop overwriting it
 
     private get matchId(): number | null {
         return this.globalService.currentMatch()?.id || null
@@ -211,6 +224,7 @@ export class GameComponent implements OnInit, OnDestroy{
     private buildState(): LiveState {
         return {
             v: 1,
+            rev: ++this.rev,
             savedAt: Date.now(),
             setId: this.globalService.currentSet()?.id ?? null,
             setNumber: this.setNumber,
@@ -228,12 +242,16 @@ export class GameComponent implements OnInit, OnDestroy{
             results: this.results,
             endSetClicked: this.endSetClicked,
             allSetsPlayed: this.allSetsPlayed,
+            scoreEvents: this.scoreEvents.slice(-50),
+            rallyTouchIds: [...this.touches, ...this.pendingTouches, ...this.failedTouches]
+                .filter(t => t.rally === this.rallySeq && t.client_id).map(t => t.client_id as string),
+            unsent: [...this.pendingTouches, ...this.failedTouches],
         }
     }
 
     saveState(): void {
         const id = this.matchId
-        if (!id || this.endingMatch || this.resuming) return
+        if (!id || this.endingMatch || this.resuming || this.conflict) return
         const state = this.buildState()
         try { localStorage.setItem(STATE_KEY + id, JSON.stringify(state)) } catch {}
         clearTimeout(this.saveTimer)
@@ -242,10 +260,24 @@ export class GameComponent implements OnInit, OnDestroy{
 
     private pushState(id: number, state: LiveState): void {
         this.saveTimer = null
-        if (this.endingMatch) return
+        clearTimeout(this.retryTimer)
+        if (this.endingMatch || this.conflict) return
         this.matchesService.updateMatch(id, { live_state: state }).subscribe({
-            next: () => this.clearError('snapshot'),
-            error: (err) => this.showError('snapshot', 'Stato della partita non salvato sul server: la ripresa da un altro dispositivo potrebbe non essere aggiornata', err),
+            next: () => {
+                this.clearError('snapshot')
+                this.cdr.detectChanges()
+            },
+            error: (err) => {
+                if (err?.status === 409) {
+                    // Another device went on with this match (or it is over): do not overwrite it
+                    this.conflict = true
+                    this.showError('conflict', 'La partita è stata aggiornata da un altro dispositivo o è terminata: ricarica la pagina per continuare', err)
+                    return
+                }
+                this.showError('snapshot', 'Stato della partita non salvato sul server: riprovo tra poco', err)
+                // Retry the same state, unless a newer one is already on its way
+                this.retryTimer = setTimeout(() => { if (!this.saveTimer) this.pushState(id, state) }, 5000)
+            },
         })
     }
 
@@ -268,10 +300,19 @@ export class GameComponent implements OnInit, OnDestroy{
                 this.globalService.currentPlayers.set(players)
                 this.players = players
                 this.readFormat(match)
-                // The newest between the local copy and the server copy
+                // A finished match (results saved, no live state) cannot be reopened, not even from a local copy
+                if (!match.live_state && match.results?.length) {
+                    try { localStorage.removeItem(STATE_KEY + id) } catch {}
+                    this.resuming = false
+                    this.showError('match', 'Questa partita è terminata: aprila da Partite → Dettagli')
+                    return
+                }
+                // The newest between the local copy and the server copy (by revision; on a tie the server wins)
                 const local = this.readLocalState(id)
                 const server = match.live_state as LiveState | null
-                const state = [local, server].filter((s): s is LiveState => !!s && s.v === 1).sort((a, b) => b.savedAt - a.savedAt)[0]
+                const candidates = [server, local].filter((s): s is LiveState => !!s && s.v === 1)
+                const state = candidates.sort((a, b) => (b.rev ?? 0) - (a.rev ?? 0))[0]
+                this.pendingLocalPush = !!state && state === local && (local?.rev ?? 0) > (server?.rev ?? 0)
                 if (!state) {
                     this.resuming = false
                     if (sets.length === 0) {
@@ -285,18 +326,20 @@ export class GameComponent implements OnInit, OnDestroy{
                 const set = sets.find(s => s.id === state.setId) ?? null
                 this.globalService.currentSet.set(set)
                 if (!set) {
-                    this.finishResume()
+                    if (state.setId && !state.endSetClicked) this.showError('set', 'Il set in corso era stato eliminato: premi NUOVO SET')
+                    this.finishResume(state)
                     return
                 }
                 this.touchesService.getSetTouches(set.id).subscribe({
                     next: (touches) => {
-                        // Earlier rallies: palla contesa only works on rallies recorded after the resume
-                        this.touches = touches.map(t => ({ ...t, seq: ++this.touchSeq, rally: -1 }))
-                        this.finishResume()
+                        // Touches of the rally in progress stay in it (rally 0), the others are earlier rallies
+                        const inRally = new globalThis.Set(state.rallyTouchIds ?? [])
+                        this.touches = touches.map(t => ({ ...t, seq: ++this.touchSeq, rally: t.client_id && inRally.has(t.client_id) ? 0 : -1 }))
+                        this.finishResume(state)
                     },
                     error: (err) => {
                         this.showError('resume', 'Tocchi del set non caricati: undo non disponibile per i tocchi precedenti', err)
-                        this.finishResume()
+                        this.finishResume(state)
                     }
                 })
             },
@@ -328,20 +371,34 @@ export class GameComponent implements OnInit, OnDestroy{
         this.results = s.results
         this.endSetClicked = s.endSetClicked
         this.allSetsPlayed = s.allSetsPlayed
+        this.scoreEvents = s.scoreEvents ?? []
+        this.rev = s.rev ?? 0
         this.rallySeq = 0
     }
 
-    private finishResume(): void {
+    private pendingLocalPush = false
+
+    private finishResume(state: LiveState): void {
         this.resuming = false
+        // Touches not saved before the reload are sent again (their client_id prevents duplicates)
+        const saved = new globalThis.Set(this.touches.map(t => t.client_id))
+        const inRally = new globalThis.Set(state.rallyTouchIds ?? [])
+        for (const t of state.unsent ?? []) {
+            if (t.client_id && saved.has(t.client_id)) continue
+            this.sendTouch({ ...t, seq: ++this.touchSeq, rally: t.client_id && inRally.has(t.client_id) ? 0 : -1 })
+        }
         this.updateSuggestion()
         this.showInfo('Partita ripresa')
-        this.saveState()
+        // The local copy was newer than the server's: send it as it is (no new revision)
+        const id = this.matchId
+        if (this.pendingLocalPush && id) this.pushState(id, state)
         this.cdr.detectChanges()
     }
 
     // Leaving clears the global match state; "Riprendi scout" reloads it from the server
     ngOnDestroy(): void {
         clearTimeout(this.infoTimer)
+        clearTimeout(this.retryTimer)
         // Send a pending live-state save now, so "Riprendi scout" finds the latest state
         const id = this.matchId
         if (this.saveTimer && id && !this.endingMatch) {
@@ -358,15 +415,25 @@ export class GameComponent implements OnInit, OnDestroy{
 
     // "−" = correction of the score only (serve and rotation are not touched)
     decreaseScore(team: Team) {
+        this.recordEvent(null)
         if (this.score[team] > 0) this.score[team]--
-        this.lastAutoPoint = null
         this.closeRally()
         this.updateSuggestion()
         this.saveState()
     }
 
-    private awardPoint(winner: Team, cause: string = '', auto: boolean = false): void {
-        if (!auto) this.lastAutoPoint = null
+    private snapshot(): Snapshot {
+        return { home: this.score.home, guests: this.score.guests, serving: this.serving, rotation: this.rotation,
+            rallySeq: this.rallySeq, index: this.index, sideSwitched: this.sideSwitched }
+    }
+
+    // cause: client_id of the touch that scored, null for a change made by the scout
+    private recordEvent(cause: string | null): void {
+        this.scoreEvents = [...this.scoreEvents.slice(-49), { cause, prev: this.snapshot() }]
+    }
+
+    private awardPoint(winner: Team, cause: string = '', causeId: string | null = null): void {
+        this.recordEvent(causeId)
         this.score[winner]++
         const next = afterPoint({ serving: this.serving, rotation: this.rotation }, winner)
         this.serving = next.serving
@@ -375,7 +442,7 @@ export class GameComponent implements OnInit, OnDestroy{
         if (cause) this.showInfo(`Punto ${winner === 'home' ? 'CASA' : 'OSPITI'} (${cause})${next.rotated ? ' · rotazione' : ''}`)
         if (!this.sideSwitched && sideSwitchDue(this.score, this.setNumber, this.format)) {
             this.sideSwitched = true
-            this.togglePos()
+            this.switchSide()
             this.showInfo('Tie-break a 8 punti: cambio campo')
         }
         this.updateSuggestion()
@@ -391,8 +458,8 @@ export class GameComponent implements OnInit, OnDestroy{
     setServing(team: Team): void {
         if (this.endSetClicked) return
         if (this.score.home === 0 && this.score.guests === 0) this.firstServer = team
+        this.recordEvent(null)
         this.serving = team
-        this.lastAutoPoint = null
         this.updateSuggestion()
         this.saveState()
     }
@@ -412,9 +479,12 @@ export class GameComponent implements OnInit, OnDestroy{
             solo: suggestFundamental(this.serving, rally, true),
             id: this.suggestion.id + 1,
         }
+        const free = !this.selectedPlayer || this.selectedPlayer.id === this.autoSelected?.id // never override the scout's choice
         if (rally.length === 0 && this.serving === 'home' && this.starting_players.length === 6 && !this.endSetClicked) {
-            this.selectedPlayer = this.starting_players[this.serverIdx]
-            this.autoSelected = this.selectedPlayer
+            if (free) {
+                this.selectedPlayer = this.starting_players[this.serverIdx]
+                this.autoSelected = this.selectedPlayer
+            }
         } else if (this.autoSelected) {
             // The preselection no longer applies (the serve passed, a touch was undone...)
             if (this.selectedPlayer?.id === this.autoSelected.id) this.selectedPlayer = null
@@ -432,16 +502,32 @@ export class GameComponent implements OnInit, OnDestroy{
         this.cdr.detectChanges()
     }
 
-    // Undoing the touch that scored also takes back its point, serve and rotation
-    private revertAutoPoint(): void {
-        const p = this.lastAutoPoint?.prev
-        if (!p) return
+    // Removing the touch that scored takes back its point, serve, rotation and side switch,
+    // but only if nothing changed the score after it
+    private revertPointOf(clientId: string | undefined): void {
+        if (!clientId) return
+        const i = this.scoreEvents.findIndex(e => e.cause === clientId)
+        if (i < 0) return
+        if (i !== this.scoreEvents.length - 1) {
+            this.scoreEvents = this.scoreEvents.filter((_, j) => j !== i)
+            this.showInfo('Tocco eliminato: il punto resta, il punteggio è cambiato dopo')
+            return
+        }
+        const p = this.scoreEvents[i].prev
+        this.scoreEvents = this.scoreEvents.slice(0, i)
         this.score.home = p.home
         this.score.guests = p.guests
         this.serving = p.serving
         this.rotation = p.rotation
+        this.index = p.index
+        this.sideSwitched = p.sideSwitched
+        // The rally goes on: touches recorded after the point belong to it again
+        const reopened = this.rallySeq
+        const retag = (list: TrackedTouch[]) => list.map(t => t.rally === reopened ? { ...t, rally: p.rallySeq } : t)
+        this.touches = retag(this.touches)
+        this.pendingTouches = retag(this.pendingTouches)
+        this.failedTouches = retag(this.failedTouches)
         this.rallySeq = p.rallySeq
-        this.lastAutoPoint = null
         this.showInfo('Punto annullato')
     }
 
@@ -467,7 +553,7 @@ export class GameComponent implements OnInit, OnDestroy{
     }
 
     get canUndo(): boolean {
-        return this.touches.length > 0 && this.pendingTouches.length === 0 && this.pendingDeletes === 0 && !this.endSetClicked
+        return this.touches.length > 0 && this.pendingTouches.length === 0 && this.pendingDeletes === 0 && !this.endSetClicked && !this.endingSet
     }
 
     get busy(): boolean {
@@ -523,12 +609,19 @@ export class GameComponent implements OnInit, OnDestroy{
             this.showError('locked', 'Set chiuso: premi NUOVO SET per continuare')
             return
         }
-        this.selectedPlayer = this.selectedOnCourt?.id === player.id ? null : player
+        // Tapping the server preselected by the app confirms it instead of deselecting it
+        const confirmsAuto = this.autoSelected?.id === player.id && this.selectedOnCourt?.id === player.id
+        this.selectedPlayer = !confirmsAuto && this.selectedOnCourt?.id === player.id ? null : player
         this.autoSelected = null
     }
 
     // The selection counts only while that player is on court: a substitution, a libero swap,
     // a new lineup or a new set make it void
+    get selectedIsLibero(): boolean {
+        const p = this.selectedOnCourt
+        return !!p && (p.id === this.libero?.id || p.id === this.bench_libero?.id)
+    }
+
     get selectedOnCourt(): Player | null {
         const p = this.selectedPlayer
         if (!p) return null
@@ -541,14 +634,13 @@ export class GameComponent implements OnInit, OnDestroy{
             this.showError('touch', 'Tocca prima un giocatore in campo')
             return
         }
-        const prev = { home: this.score.home, guests: this.score.guests, serving: this.serving, rotation: this.rotation, rallySeq: this.rallySeq }
-        const sent = this.registerNewTouch(event)
+        const clientId = this.registerNewTouch(event)
         this.selectedPlayer = null
-        if (!sent) return
+        this.autoSelected = null
+        if (!clientId) return
         const winner = terminalWinner(event.fundamental, event.outcome)
         if (winner) {
-            this.lastAutoPoint = { touchSeq: this.touchSeq, prev }
-            this.awardPoint(winner, `${event.fundamental} ${event.outcome}`, true)
+            this.awardPoint(winner, `${event.fundamental} ${event.outcome}`, clientId)
         } else {
             this.updateSuggestion()
         }
@@ -580,6 +672,7 @@ export class GameComponent implements OnInit, OnDestroy{
     // A player who leaves the court loses the selection for good (not only while off court)
     onLineupChanged(): void {
         if (!this.selectedOnCourt) this.selectedPlayer = null
+        this.updateSuggestion() // e.g. a new server after a substitution in position 1
         this.saveState()
     }
 
@@ -590,7 +683,13 @@ export class GameComponent implements OnInit, OnDestroy{
         this.onLineupChanged()
     }
     
+    // CAMBIO CAMPO pressed by the scout: a correction, so it blocks undoing earlier points
     togglePos(): void {
+        this.recordEvent(null)
+        this.switchSide()
+    }
+
+    private switchSide(): void {
         this.index = this.index === 0 ? 1 : 0
         this.saveState()
         this.cdr.detectChanges()
@@ -669,8 +768,9 @@ export class GameComponent implements OnInit, OnDestroy{
     private onTouchDeleted(touch: TrackedTouch, key: string): void {
         this.pendingDeletes--
         this.touches = this.touches.filter(t => t.id !== touch.id)
-        if (this.lastAutoPoint?.touchSeq === touch.seq) this.revertAutoPoint()
+        this.revertPointOf(touch.client_id)
         this.updateSuggestion()
+        this.saveState()
         console.log('Tocco eliminato', touch.id)
         this.clearError(key)
         this.refreshStatus()
@@ -678,11 +778,12 @@ export class GameComponent implements OnInit, OnDestroy{
     }
 
     // Create new touch
-    registerNewTouch(event: {fundamental: string; outcome: string}): boolean {
+    // Returns the client id of the touch sent, or null
+    registerNewTouch(event: {fundamental: string; outcome: string}): string | null {
         const currentSet = this.globalService.currentSet()
-        if(!currentSet || !currentSet.id || this.endSetClicked) {
+        if(!currentSet || !currentSet.id || this.endSetClicked || this.endingSet) {
             this.showError('touch', 'Nessun set attivo: tocco non registrato')
-            return false
+            return null
         }
         this.newTouch.set = currentSet.id
         if(this.selectedPlayer)
@@ -691,16 +792,18 @@ export class GameComponent implements OnInit, OnDestroy{
         this.newTouch.outcome = event.outcome
         // if form is valid
         if((this.newTouch.fundamental != "") && (this.newTouch.outcome != "")) {
-            this.sendTouch({ ...this.newTouch, client_id: newClientId(), seq: ++this.touchSeq, rally: this.rallySeq })
+            const clientId = newClientId()
+            this.sendTouch({ ...this.newTouch, client_id: clientId, seq: ++this.touchSeq, rally: this.rallySeq })
             this.newTouch = {id: -1, set: -1, player: -1, fundamental: '', outcome: ''}
-            return true
+            return clientId
         }
-        return false
+        return null
     }
 
     private sendTouch(touch: TrackedTouch): void {
         const { seq, rally, uncertain, ...payload } = touch
         this.pendingTouches = [...this.pendingTouches, touch]
+        this.saveState() // an unsent touch survives a reload
         this.touchesService.createTouch(payload).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
             next: (res) => {
                 console.log(res)
@@ -711,6 +814,7 @@ export class GameComponent implements OnInit, OnDestroy{
                 this.clearError('touch')
                 this.clearError('rally')
                 this.refreshStatus()
+                this.saveState()
                 this.cdr.detectChanges()
             },
             error: (err) => {
@@ -718,6 +822,7 @@ export class GameComponent implements OnInit, OnDestroy{
                 this.pendingTouches = this.pendingTouches.filter(t => t !== touch)
                 this.failedTouches = [...this.failedTouches, { ...touch, uncertain: touch.uncertain || err?.name === 'TimeoutError' }]
                 this.refreshStatus()
+                this.saveState()
                 this.cdr.detectChanges()
             }
         });
@@ -741,7 +846,11 @@ export class GameComponent implements OnInit, OnDestroy{
         if (list.some(t => t.uncertain)) this.clearError('discard') // a new attempt replaces the old failure
         this.failedTouches = this.failedTouches.filter(t => !list.includes(t))
         list.filter(t => t.uncertain).forEach(t => this.removeUncertainTouch(t))
+        // A touch never saved has no delete: take back its point here
+        list.filter(t => !t.uncertain).forEach(t => this.revertPointOf(t.client_id))
         this.refreshStatus()
+        this.updateSuggestion()
+        this.saveState()
     }
 
     // A touch that timed out may exist on the server anyway: re-send it (same client_id,
@@ -777,8 +886,8 @@ export class GameComponent implements OnInit, OnDestroy{
 
     // Manual rotation (correction): the player in position 2 goes to 1, 1 goes to 6, ...
     doRotation(): void {
+        this.recordEvent(null)
         this.rotation = (this.rotation + 1) % 6
-        this.lastAutoPoint = null
         this.updateSuggestion()
         this.saveState()
     }
@@ -870,9 +979,12 @@ export class GameComponent implements OnInit, OnDestroy{
         this.score.guests = 0
         this.score.home = 0
         this.rotation = 0
-        this.lastAutoPoint = null
+        this.scoreEvents = []
         this.sideSwitched = false
-        if (this.setNumber > 1) {
+        if (this.setNumber > 1 && isDecidingSet(this.setNumber, this.format)) {
+            // Deciding set: a new toss decides serve and sides
+            this.showInfo('Tie-break: nuovo sorteggio. Scegli chi batte (palla accanto a CASA/OSPITI) e usa CAMBIO CAMPO se serve', 10000)
+        } else if (this.setNumber > 1) {
             // New set: the teams change court and the other team serves first
             this.firstServer = this.firstServer === 'home' ? 'guests' : 'home'
             this.index = this.index === 0 ? 1 : 0
@@ -881,7 +993,7 @@ export class GameComponent implements OnInit, OnDestroy{
 
         this.changeCounter = 6
         this.doubleChangeCounter = 2
-        this.leftTimeOuts = 3
+        this.leftTimeOuts = 2
         this.y_card_counter = 0
         this.r_card_counter = 0
 
@@ -893,11 +1005,13 @@ export class GameComponent implements OnInit, OnDestroy{
         this.cdr.detectChanges()
     }
 
+    // After FINE SET: next set number, unless the match is won or all its sets are played
     handleNextSet() {
-        if (this.setNumber < 5) {
-            this.setNumber = this.setNumber + 1
-        } else {
+        const lastSet = this.format.setsToWin * 2 - 1
+        if (matchWinner(this.results, this.format) || this.setNumber >= lastSet) {
             this.allSetsPlayed = true
+        } else {
+            this.setNumber = this.setNumber + 1
         }
         this.cdr.detectChanges()
     }
@@ -933,7 +1047,7 @@ export class GameComponent implements OnInit, OnDestroy{
                 this.results = [...this.results, updatedScores]
                 this.endSetClicked = true
                 this.selectedPlayer = null
-                this.lastAutoPoint = null
+                this.scoreEvents = []
                 const won = matchWinner(this.results, this.format)
                 if (won) {
                     const sets = setsWon(this.results)

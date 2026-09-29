@@ -37,8 +37,8 @@
                 <div class="manage-score d-flex justify-content-center align-items-center col">
                     <button type="button" class="serve-toggle" [class.serving]="serving === 'home'" [disabled]="endSetClicked"
                         (click)="setServing('home')" aria-label="Batte CASA">🏐</button>CASA
-                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || !hasActiveSet" (click)="decreaseScore('home')">—</button>
-                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || !hasActiveSet" (click)="increaseScore('home')">+</button>
+                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || endingSet || resuming || !hasActiveSet" (click)="decreaseScore('home')">—</button>
+                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || endingSet || resuming || !hasActiveSet" (click)="increaseScore('home')">+</button>
                 </div>
 
 
@@ -102,8 +102,8 @@
                 <div class="manage-score d-flex justify-content-center align-items-center col">
                     <button type="button" class="serve-toggle" [class.serving]="serving === 'guests'" [disabled]="endSetClicked"
                         (click)="setServing('guests')" aria-label="Batte OSPITI">🏐</button>OSPITI
-                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || !hasActiveSet" (click)="decreaseScore('guests')">—</button>
-                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || !hasActiveSet" (click)="increaseScore('guests')">+</button> 
+                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || endingSet || resuming || !hasActiveSet" (click)="decreaseScore('guests')">—</button>
+                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || endingSet || resuming || !hasActiveSet" (click)="increaseScore('guests')">+</button> 
                 </div>
 
             </div>
@@ -134,8 +134,9 @@
         <!-- Always-visible input: player (court) -> fundamental -> grade -->
         <app-touch-pad
             [player]="selectedOnCourt"
+            [isLibero]="selectedIsLibero"
             [suggestion]="suggestion"
-            [disabled]="endSetClicked || !hasActiveSet"
+            [disabled]="endSetClicked || endingSet || resuming || !hasActiveSet"
             (touchEntered)="onTouchEntered($event)"
             (statsRequested)="openStats()">
         </app-touch-pad>
