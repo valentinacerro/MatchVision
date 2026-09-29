@@ -41,6 +41,24 @@
         </div>
     </div>
 
+    @if (libero) {
+        <div class="player-selection-section mb-4">
+            <hr>
+            <h5>Il libero entra in seconda linea al posto di:</h5>
+            <p class="text-muted small mb-2">Nessuno selezionato = libero gestito a mano</p>
+            <div class="d-flex flex-wrap gap-2">
+                @for(player of startingPlayers; track player.id){
+                    <button class="btn player-btn"
+                        [class.btn-dark]="liberoFor.includes(player.id)"
+                        [class.btn-outline-secondary]="!liberoFor.includes(player.id)"
+                        (click)="toggleLiberoFor(player)">
+                        {{ player.number }} | {{ player.name }} {{ player.surname }} ({{ player.role }})
+                    </button>
+                }
+            </div>
+        </div>
+    }
+
     <div class="player-selection-section" [class.disabled-section]="startingPlayers.length < 6">
         <hr>
         <h5>Seleziona il libero di riserva (opzionale):</h5>

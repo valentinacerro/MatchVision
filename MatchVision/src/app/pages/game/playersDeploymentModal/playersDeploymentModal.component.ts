@@ -1,7 +1,12 @@
 import { Component, EventEmitter, inject, Output, TemplateRef, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgbModal } from '@ng-bootstrap/ng-bootstrap';
-import { Player } from '../../../Models/Player';
+import { Player, Role } from '../../../Models/Player';
+
+// The app stores roles as the Italian labels of the form ('Centrale'); the enum has the English codes
+function isMiddleBlocker(p: Player): boolean {
+    return (p.role as string) === 'Centrale' || p.role === Role.MIDDLE_BLOCKER
+}
 import { GlobalService } from '../../../services/globalService';
 
 @Component({
@@ -28,6 +33,7 @@ export class PlayersDeploymentModal {
     libero: Player | null = null
     benchLibero: Player | null = null
     benchPlayers: Player[] = []
+    liberoFor: number[] = [] // starters the libero replaces in the back row (usually the middle blockers)
 
     // Read at every use: after a resume the players arrive later than this component
     get allPlayers(): Player[] {
@@ -76,9 +82,19 @@ export class PlayersDeploymentModal {
         if (this.isStartingPlayerSelected(player)) return
         if (this.libero && this.libero.id === player.id) {
             this.libero = null
+            this.liberoFor = []
         } else {
             this.libero = player
+            // By default the libero comes in for the middle blockers
+            if (this.liberoFor.length === 0)
+                this.liberoFor = this.startingPlayers.filter(p => isMiddleBlocker(p)).map(p => p.id)
         }
+    }
+
+    toggleLiberoFor(player: Player): void {
+        this.liberoFor = this.liberoFor.includes(player.id)
+            ? this.liberoFor.filter(id => id !== player.id)
+            : [...this.liberoFor, player.id]
     }
 
     toggleBenchLibero(player: Player): void {
@@ -119,12 +135,14 @@ export class PlayersDeploymentModal {
         console.log('Libero di riserva:', this.benchLibero)
         console.log('Panchinari:', this.benchPlayers)
         
-        this.startingPlayersChosen.emit({ startingPlayers: this.startingPlayers, libero: this.libero, benchLibero: this.benchLibero, benchPlayers: this.benchPlayers })
+        const liberoFor = this.libero ? this.liberoFor.filter(id => this.startingPlayers.some(p => p.id === id)) : []
+        this.startingPlayersChosen.emit({ startingPlayers: this.startingPlayers, libero: this.libero, benchLibero: this.benchLibero, benchPlayers: this.benchPlayers, liberoFor })
 
         this.startingPlayers = []
         this.libero = null
         this.benchLibero = null
         this.benchPlayers = []
+        this.liberoFor = []
     }
 
 

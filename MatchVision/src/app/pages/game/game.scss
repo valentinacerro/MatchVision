@@ -83,6 +83,16 @@ body {
     pointer-events: none;
 }
 
+// Libero: different colour (FIVB 19.2: the libero wears a contrasting jersey)
+.player-icon.libero-icon {
+    background-color: #fd7e14;
+    border-color: #fd7e14;
+}
+
+.player-icon.libero-bench {
+    opacity: 0.45;
+}
+
 .player-icon.selected {
     outline: 4px solid #ffc107;
     outline-offset: 2px;

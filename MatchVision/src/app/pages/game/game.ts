@@ -72,6 +72,7 @@ interface LiveState {
     unsentRallyDeletes: string[]
     subs: Substitution[]
     unsentEvents: GameEvent[]
+    liberoFor: number[]
 }
 
 // A substitution of this set: the starter left for the sub; returned once the starter re-entered
@@ -157,6 +158,8 @@ export class GameComponent implements OnInit, OnDestroy{
     // Substitutions of this set (FIVB 15.6: a starter leaves once and re-enters once, for his substitute)
     subs: Substitution[] = []
     private unsentEvents: GameEvent[] = []
+    // Starters the libero replaces in the back row; empty = libero managed by hand
+    liberoFor: number[] = []
     info: string = ''
     private infoTimer: any = null
     private autoSelected: Player | null = null // the server preselected by the app, not by the scout
@@ -299,6 +302,7 @@ export class GameComponent implements OnInit, OnDestroy{
             unsentRallyDeletes: this.unsentRallyDeletes,
             subs: this.subs,
             unsentEvents: this.unsentEvents,
+            liberoFor: this.liberoFor,
         }
     }
 
@@ -437,6 +441,7 @@ export class GameComponent implements OnInit, OnDestroy{
         this.unsentRallyDeletes = s.unsentRallyDeletes ?? []
         this.subs = s.subs ?? []
         this.unsentEvents = s.unsentEvents ?? []
+        this.liberoFor = s.liberoFor ?? []
         this.rallySeq = s.rallySeq ?? 0
         this.touchSeq = (s.order ?? []).length + 1000 // re-sent and new touches come after the known ones
     }
@@ -819,7 +824,33 @@ export class GameComponent implements OnInit, OnDestroy{
     get selectedOnCourt(): Player | null {
         const p = this.selectedPlayer
         if (!p) return null
-        return this.starting_players.some(s => s.id === p.id) || this.libero?.id === p.id ? p : null
+        return this.onCourt.some(s => s.id === p.id) ? p : null
+    }
+
+    // ---- Libero (FIVB 19): replaces the chosen players when they are in the back row,
+    // except the one in position 1 while the team serves (the libero cannot serve)
+    get liberoAuto(): boolean {
+        return !!this.libero && this.liberoFor.length > 0
+    }
+
+    displayedAt(i: number): Player {
+        const p = this.starting_players[i]
+        if (!this.liberoAuto || !this.liberoFor.includes(p.id)) return p
+        const position = (i - this.rotation + 6) % 6 // 0 = P1, 4 = P5, 5 = P6: back row
+        const backRow = position === 0 || position === 4 || position === 5
+        const serves = position === 0 && this.serving === 'home'
+        return backRow && !serves ? this.libero as Player : p
+    }
+
+    get liberoOnCourt(): boolean {
+        return this.liberoAuto && this.starting_players.some((_, i) => this.displayedAt(i).id === this.libero?.id)
+    }
+
+    // Who can touch the ball now: the six shown on court, plus the libero when managed by hand
+    get onCourt(): Player[] {
+        const shown = this.starting_players.map((_, i) => this.displayedAt(i))
+        if (this.libero && !this.liberoAuto) shown.push(this.libero)
+        return shown
     }
 
     onTouchEntered(event: {fundamental: string; outcome: string}): void {
@@ -892,6 +923,7 @@ export class GameComponent implements OnInit, OnDestroy{
         out.forEach((p, i) => {
             const q = entering[i]
             lineup = lineup.map(x => x.id === p.id ? q : x) // same position in the rotation
+            this.liberoFor = this.liberoFor.map(id => id === p.id ? q.id : id) // the libero keeps replacing that position
             bench = [...bench.filter(x => x.id !== q.id), p]
             const open = this.subs.find(s => s.sub === p.id && s.starter === q.id && !s.returned)
             this.subs = open
@@ -1153,6 +1185,7 @@ export class GameComponent implements OnInit, OnDestroy{
 
     assignPlayers(event: any) {
         this.selectedPlayer = null
+        this.liberoFor = event.liberoFor ?? []
         this.starting_players = event.startingPlayers
         this.libero = event.libero
         this.bench_players = event.benchPlayers

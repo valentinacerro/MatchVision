@@ -114,15 +114,18 @@
 
         <!-- Players icons -->
             @for (player of starting_players; track $index){
+                @let shown = displayedAt($index);
                 <button class="player-icon btn btn-primary position-absolute" [style.left.%]="playerPos($index)[0]" [style.top.%]="playerPos($index)[1]"
-                    [class.selected]="selectedOnCourt?.id === player.id" [class.server]="serving === 'home' && $index === serverIdx"
-                    (click)="selectPlayer(player)">{{ player.number }}</button>
+                    [class.libero-icon]="shown.id === libero?.id"
+                    [class.selected]="selectedOnCourt?.id === shown.id" [class.server]="serving === 'home' && $index === serverIdx"
+                    (click)="selectPlayer(shown)">{{ shown.number }}</button>
             }        
-            <!-- Positioning libero -->
-            @if (libero){
-                <button class="player-icon btn btn-primary position-absolute" 
+            <!-- Libero outside the court: selectable only when managed by hand -->
+            @if (libero && !liberoOnCourt){
+                <button class="player-icon btn btn-primary position-absolute libero-icon"
+                    [class.libero-bench]="liberoAuto"
                     [style.left.%]="libero_pos[index][0]" [style.top.%]="libero_pos[index][1]" 
-                    [class.selected]="selectedOnCourt?.id === libero.id" (click)="selectPlayer(libero)">{{ libero.number }}</button>}
+                    [class.selected]="selectedOnCourt?.id === libero.id" [disabled]="liberoAuto" (click)="selectPlayer(libero)">{{ libero.number }}</button>}
         </div>
 
         <!-- Always-visible input: player (court) -> fundamental -> grade -->
