@@ -1,7 +1,9 @@
-import { Component, Input, OnInit, inject, TemplateRef, ViewChild, Output, EventEmitter } from '@angular/core'
+import { Component, Input, inject, TemplateRef, ViewChild, Output, EventEmitter } from '@angular/core'
 import { NgbModal } from '@ng-bootstrap/ng-bootstrap'
 import { Player } from '../../../Models/Player'
 
+// Picks who leaves and who enters; the game checks the substitution rules and applies it.
+// Players are paired in the order they are tapped: the 1st leaving with the 1st entering, ...
 @Component({
     selector: 'app-change-players-modal',
     standalone: true,
@@ -9,7 +11,6 @@ import { Player } from '../../../Models/Player'
     templateUrl: './changePlayersModal.component.html',
     styleUrl: './changePlayersModal.component.scss',
 })
-
 export class ChangePlayersModalComponent {
     private modalService = inject(NgbModal)
     @ViewChild('content', { static: true }) content!: TemplateRef<any>
@@ -18,54 +19,42 @@ export class ChangePlayersModalComponent {
     @Input() bench_players!: Player[]
     @Input() libero!: Player | null
     @Input() bench_libero!: Player | null
-    
-    @Output() changeOccurred = new EventEmitter<void>()
-    @Output() doubleChangeOccurred = new EventEmitter<void>()
+    @Input() changesLeft: number = 6
+
+    @Output() changeRequested = new EventEmitter<{ out: Player[]; in: Player[] }>()
     @Output() swapLiberosClicked = new EventEmitter<void>()
 
     enteringPlayers: Player[] = []
     exitingPlayers: Player[] = []
-    changePlayersOccurring: boolean = false
 
-    // Dopo la conferma del cambio
-    changePlayers(): void {
-        if(this.exitingPlayers.length <= 2 && this.enteringPlayers.length <= 2){
-            if ((this.exitingPlayers[0] != this.exitingPlayers[1]) && (this.enteringPlayers[0] != this.enteringPlayers[1])){
-                if(this.exitingPlayers.length === this.enteringPlayers.length){
-                    this.exitingPlayers.forEach((p, index) => {
-                        let pos = this.starting_players.indexOf(p) // To maintain the rotation
-                        this.starting_players[pos] = this.enteringPlayers[index]
-                        this.bench_players.splice(this.bench_players.indexOf(this.enteringPlayers[index]), 1)
-                        this.bench_players.push(p)
-                    })
-                    if (this.exitingPlayers.length === 2 && this.enteringPlayers.length === 2)
-                        this.doubleChangeOccurred.emit()
-                    else if (this.exitingPlayers.length === 1 && this.enteringPlayers.length === 1)
-                        this.changeOccurred.emit()
-                }
-                else{}
-            }
-            else{}
-        }
-        else{}
-        this.changePlayersOccurring = false
+    open() {
+        this.exitingPlayers = []
+        this.enteringPlayers = []
+        this.modalService.open(this.content, { ariaLabelledBy: 'modal-change-players', size: 'lg' })
+    }
+
+    // Tap to select, tap again to deselect; at most two per side (a double change)
+    toggle(list: Player[], player: Player): void {
+        const i = list.findIndex(p => p.id === player.id)
+        if (i >= 0) list.splice(i, 1)
+        else if (list.length < 2) list.push(player)
+    }
+
+    orderOf(list: Player[], player: Player): number {
+        return list.findIndex(p => p.id === player.id) + 1
+    }
+
+    get canConfirm(): boolean {
+        return this.exitingPlayers.length > 0 && this.exitingPlayers.length === this.enteringPlayers.length
+    }
+
+    confirm(modal: any): void {
+        if (!this.canConfirm) return
+        this.changeRequested.emit({ out: [...this.exitingPlayers], in: [...this.enteringPlayers] })
+        modal.close()
     }
 
     changeLiberos(): void {
         this.swapLiberosClicked.emit()
-    }
-
-    isEnteringPlayerSelected(player: Player): boolean {
-        return this.enteringPlayers.some(p => p.id === player.id)
-    }
-
-    isExitingPlayerSelected(player: Player): boolean {
-        return this.exitingPlayers.some(p => p.id === player.id)
-    }
-
-    open() {
-        this.modalService.open(this.content, { ariaLabelledBy: 'modal-change-players', size: 'lg' });
-        this.exitingPlayers = []
-        this.enteringPlayers = []
     }
 }

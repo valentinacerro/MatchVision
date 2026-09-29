@@ -1,54 +1,58 @@
 <ng-template #content let-modal>
 	<div class="modal-header">
-		<div><h4 class="modal-title" id="modal-change-players">Cambio giocatori</h4></div>
-        <h5>Seleziona 1 o 2 giocatori per parte per cambiare la formazione o effetturare un cambio</h5>
+		<div>
+            <h4 class="modal-title" id="modal-change-players">Cambio giocatori</h4>
+            <div class="text-muted small">Uno o due per parte: il 1° che esce è sostituito dal 1° che entra. Cambi rimasti: <strong>{{ changesLeft }}</strong></div>
+        </div>
 		<button type="button" class="btn-close" aria-label="Close" (click)="modal.close()"></button>
 	</div>
 	<div class="modal-body row">
 		
         <div class="starting-players col">
-            <h3>In campo</h3>
+            <h3>Esce (in campo)</h3>
             <div class="exiting-players">
-                @for (player of starting_players; track $index){
-                    <div class="list"><button class="change-btn btn btn-outline-secondary"
-                        [class.btn-dark]="isExitingPlayerSelected(player)"
-                        [class.btn-outline-primary]="!isExitingPlayerSelected(player)"
-                        (click)="(this.exitingPlayers.push(player))">{{ player.number }} | {{ player.name }} {{ player.surname }}</button></div>
-                }
-            </div>
-        </div>
-
-        <div class="bench-players col">
-            <h3>In panchina</h3>
-            <div class="entering-players">
-                @for (player of bench_players; track $index){
-                    <div class="list"><button class="change-btn btn btn-outline-secondary" 
-                        [class.btn-dark]="isEnteringPlayerSelected(player)"
-                        [class.btn-outline-primary]="!isEnteringPlayerSelected(player)"
-                        (click)="this.enteringPlayers.push(player); this.changePlayersOccurring = true">
+                @for (player of starting_players; track player.id){
+                    <div class="list"><button class="change-btn btn"
+                        [class.btn-dark]="orderOf(exitingPlayers, player) > 0"
+                        [class.btn-outline-primary]="orderOf(exitingPlayers, player) === 0"
+                        (click)="toggle(exitingPlayers, player)">
+                        @if (orderOf(exitingPlayers, player) > 0) { <span class="badge bg-warning text-dark me-1">{{ orderOf(exitingPlayers, player) }}</span> }
                         {{ player.number }} | {{ player.name }} {{ player.surname }}</button></div>
                 }
             </div>
         </div>
 
-        <div class="list" style="padding: 0;">
-            <span class="placeholder col-11 placeholder-xs" style="margin: 2%;"></span>
+        <div class="bench-players col">
+            <h3>Entra (panchina)</h3>
+            <div class="entering-players">
+                @for (player of bench_players; track player.id){
+                    <div class="list"><button class="change-btn btn"
+                        [class.btn-dark]="orderOf(enteringPlayers, player) > 0"
+                        [class.btn-outline-primary]="orderOf(enteringPlayers, player) === 0"
+                        (click)="toggle(enteringPlayers, player)">
+                        @if (orderOf(enteringPlayers, player) > 0) { <span class="badge bg-warning text-dark me-1">{{ orderOf(enteringPlayers, player) }}</span> }
+                        {{ player.number }} | {{ player.name }} {{ player.surname }}</button></div>
+                }
+            </div>
         </div>
 
-        <h3>Liberi</h3>
-        <div class="row liberos">
-            <div class="libero col-5 list">
-                <button class="change-btn btn btn-outline-secondary">{{ libero?.number }} | {{ libero?.name }} {{ libero?.surname }}</button>
+        @if (libero || bench_libero) {
+            <hr class="mt-3">
+            <h3>Liberi</h3>
+            <div class="row liberos align-items-center">
+                <div class="libero col-5 list">
+                    <div class="change-btn border rounded p-2">{{ libero?.number }} | {{ libero?.name }} {{ libero?.surname }}</div>
+                </div>
+                <div class="col-2 list"><button class="btn" [disabled]="!bench_libero" (click)="changeLiberos()" aria-label="Scambia liberi"><img src="/icons/swap-icon.png" alt="Scambia liberi"></button></div>
+                <div class="bench-libero col-5 list">
+                    <div class="change-btn border rounded p-2">{{ bench_libero?.number }} | {{ bench_libero?.name }} {{ bench_libero?.surname }}</div>
+                </div>
             </div>
-            <!-- swap image --><div class="col-2 list"><button class="btn"><img src="/icons/swap-icon.png" alt="Scambia liberi" (click)="changeLiberos()"></button></div>
-            <div class="bench-libero col-5 list">
-                <button class="change-btn btn btn-outline-secondary">{{ bench_libero?.number }} | {{ bench_libero?.name }} {{ bench_libero?.surname }}</button>
-            </div>
-        </div>
+        }
 
 	</div>
 	<div class="modal-footer">
-		<button type="button" class="btn btn-outline-secondary btn-cancel" (click)="modal.close(); changePlayersOccurring = false">Annulla</button>
-		<button type="button" class="btn btn-outline-secondary btn-confirm" (click)="modal.close(); changePlayersOccurring ? changePlayers() : modal.close()">Conferma</button>
+		<button type="button" class="btn btn-outline-secondary btn-cancel" (click)="modal.close()">Annulla</button>
+		<button type="button" class="btn btn-primary btn-confirm" [disabled]="!canConfirm" (click)="confirm(modal)">Conferma cambio</button>
 	</div>
 </ng-template>
