@@ -22,6 +22,16 @@ export interface KpiRow {
     errori: number
 }
 
+export interface Share { won: number; total: number; pct: number | null }
+
+// Side-out (points won on the opponent's serve) and break-point (on our serve), overall and per rotation
+export interface RallyStats {
+    total: number
+    sideout: Share
+    breakpoint: Share
+    rotations: { rotation: number; p1: number | null; sideout: Share; breakpoint: Share }[]
+}
+
 @Injectable({
     providedIn: 'root'
 })
@@ -50,6 +60,14 @@ export class StatsService {
 
     getSetKpi(setId: number): Observable<KpiRow[]> {
         return this.http.get<KpiRow[]>(`${this.apiUrl}/match_details/sets/${setId}/kpi/`)
+    }
+
+    getMatchRallyStats(matchId: number): Observable<RallyStats> {
+        return this.http.get<RallyStats>(`${this.apiUrl}/match_details/${matchId}/rally_stats/`)
+    }
+
+    getSetRallyStats(setId: number): Observable<RallyStats> {
+        return this.http.get<RallyStats>(`${this.apiUrl}/match_details/sets/${setId}/rally_stats/`)
     }
 
 }

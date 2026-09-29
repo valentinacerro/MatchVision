@@ -1,6 +1,7 @@
 import { ChangeDetectorRef, Component, inject, Input, TemplateRef, ViewChild } from '@angular/core'
 import { NgbModal } from '@ng-bootstrap/ng-bootstrap'
-import { KpiRow, StatsService } from '../../../services/statsService'
+import { forkJoin } from 'rxjs'
+import { KpiRow, RallyStats, StatsService } from '../../../services/statsService'
 import { ALL_FUNDAMENTALS } from '../touchPad/touchPad.component'
 
 // KPI of the current set or of the whole match, readable during a time-out.
@@ -26,7 +27,9 @@ export class StatsPanelComponent {
 
     scope: 'set' | 'match' = 'set'
     rows: KpiRow[] = []
-    fundamental = 'Ricezione'
+    rallies: RallyStats | null = null
+    fundamental = 'Ricezione' // or ROTATIONS for the side-out / break-point table
+    readonly ROTATIONS = 'Rotazioni'
     loading = false
     error = ''
     private request = 0 // only the latest answer is shown
@@ -45,6 +48,7 @@ export class StatsPanelComponent {
         const id = this.scope === 'set' ? this.setId : this.matchId
         const request = ++this.request
         this.rows = []
+        this.rallies = null
         if (!id) {
             this.loading = false
             this.error = this.scope === 'set' ? 'Nessun set attivo' : 'Nessuna partita attiva'
@@ -53,13 +57,15 @@ export class StatsPanelComponent {
         this.loading = true
         this.error = ''
         const kpi = this.scope === 'set' ? this.statsService.getSetKpi(id) : this.statsService.getMatchKpi(id)
-        kpi.subscribe({
-            next: (rows) => {
+        const rallies = this.scope === 'set' ? this.statsService.getSetRallyStats(id) : this.statsService.getMatchRallyStats(id)
+        forkJoin({ rows: kpi, rallies }).subscribe({
+            next: ({ rows, rallies }) => {
                 if (request !== this.request) return
                 this.rows = rows
+                this.rallies = rallies
                 this.loading = false
                 const available = this.availableFundamentals
-                if (available.length > 0 && !available.includes(this.fundamental)) this.fundamental = available[0]
+                if (this.fundamental !== this.ROTATIONS && available.length > 0 && !available.includes(this.fundamental)) this.fundamental = available[0]
                 this.cdr.detectChanges()
             },
             error: (err) => {

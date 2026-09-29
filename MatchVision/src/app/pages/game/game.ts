@@ -16,6 +16,7 @@ import { TouchesService } from '../../services/touchesService'
 import { SetsService } from '../../services/setsService'
 import { GlobalService } from '../../services/globalService'
 import { MatchesService } from '../../services/matchesService'
+import { RalliesService, Rally } from '../../services/ralliesService'
 import { forkJoin, switchMap, timeout } from 'rxjs'
 import {
     afterPoint, DEFAULT_FORMAT, isDecidingSet, MatchFormat, matchWinner, serverIndex, setsWon, setWinner,
@@ -35,7 +36,7 @@ interface Snapshot {
     rallyIds: string[] // client ids of the touches of the rally this point closed (to reopen it on undo)
 }
 // A score change caused by a touch (cause = its client_id) or by the scout (cause = null)
-interface ScoreEvent { cause: string | null; prev: Snapshot }
+interface ScoreEvent { cause: string | null; prev: Snapshot; rallyId?: string }
 
 // Everything needed to resume a match that is being scouted (saved touches are on the server)
 interface LiveState {
@@ -65,6 +66,9 @@ interface LiveState {
     rallyTouchIds: string[] // client ids of the touches of the rally in progress
     order: string[]         // client ids of this set's touches in tap order
     unsent: TrackedTouch[]  // pending or failed touches, re-sent on resume
+    rallyLog: { id: string; winner: Team }[] // rallies of this set, oldest first
+    unsentRallies: Rally[]
+    unsentRallyDeletes: string[]
 }
 
 function newClientId(): string {
@@ -91,6 +95,7 @@ export class GameComponent implements OnInit, OnDestroy{
     constructor(private touchesService: TouchesService,
         private setsService: SetsService,
         private matchesService: MatchesService,
+        private ralliesService: RalliesService,
         public globalService: GlobalService,
         private router: Router,
         private route: ActivatedRoute,
@@ -136,6 +141,12 @@ export class GameComponent implements OnInit, OnDestroy{
     suggestion = { completo: '', solo: '', id: 0 }
     // Score changes of this set, newest last: undoing a touch takes back its point only if it is the latest change
     private scoreEvents: ScoreEvent[] = []
+    // Every point is also saved as a rally (serve, rotation, winner) for side-out / break-point stats
+    private rallyLog: { id: string; winner: Team }[] = []
+    private unsentRallies: Rally[] = []
+    private unsentRallyDeletes: string[] = []
+    private deletedRallies = new globalThis.Set<string>()
+    private rallyRetryTimer: any = null
     info: string = ''
     private infoTimer: any = null
     private autoSelected: Player | null = null // the server preselected by the app, not by the scout
@@ -273,6 +284,9 @@ export class GameComponent implements OnInit, OnDestroy{
             rallyTouchIds: all.filter(t => t.rally === this.rallySeq && t.client_id).map(t => t.client_id as string),
             order: all.filter(t => t.client_id).map(t => t.client_id as string),
             unsent: [...this.pendingTouches, ...this.failedTouches],
+            rallyLog: this.rallyLog,
+            unsentRallies: this.unsentRallies,
+            unsentRallyDeletes: this.unsentRallyDeletes,
         }
     }
 
@@ -406,6 +420,9 @@ export class GameComponent implements OnInit, OnDestroy{
         this.endSetClicked = s.endSetClicked
         this.allSetsPlayed = s.allSetsPlayed
         this.scoreEvents = s.scoreEvents ?? []
+        this.rallyLog = s.rallyLog ?? []
+        this.unsentRallies = s.unsentRallies ?? []
+        this.unsentRallyDeletes = s.unsentRallyDeletes ?? []
         this.rallySeq = s.rallySeq ?? 0
         this.touchSeq = (s.order ?? []).length + 1000 // re-sent and new touches come after the known ones
     }
@@ -431,6 +448,9 @@ export class GameComponent implements OnInit, OnDestroy{
             if (t.client_id && saved.has(t.client_id)) continue
             this.sendTouch({ ...t, seq: this.seqOf(state, t.client_id), rally: this.rallyOf(state, t.client_id) })
         }
+        // Points not saved before the reload are sent again, deletes too
+        this.unsentRallyDeletes.forEach(id => this.deleteRallyOnServer(id))
+        this.unsentRallies.forEach(r => this.sendRally(r))
         this.updateSuggestion()
         this.showInfo('Partita ripresa')
         // This device had changes the server did not get: send them now
@@ -442,6 +462,7 @@ export class GameComponent implements OnInit, OnDestroy{
     ngOnDestroy(): void {
         clearTimeout(this.infoTimer)
         clearTimeout(this.retryTimer)
+        clearTimeout(this.rallyRetryTimer)
         // Send a pending live-state save now, so "Riprendi scout" finds the latest state
         const id = this.matchId
         if (this.saveTimer && id && !this.endingMatch) {
@@ -461,6 +482,9 @@ export class GameComponent implements OnInit, OnDestroy{
         if (this.score[team] === 0) return
         this.recordEvent(null)
         this.score[team]--
+        // The score went back: the last point of that team is removed from the rally stats too
+        const last = [...this.rallyLog].reverse().find(r => r.winner === team)
+        if (last) this.removeRally(last.id)
         this.closeRally()
         this.updateSuggestion()
         this.saveState()
@@ -479,9 +503,16 @@ export class GameComponent implements OnInit, OnDestroy{
     }
 
     private awardPoint(winner: Team, cause: string = '', causeId: string | null = null): void {
+        const before = { serving: this.serving, rotation: this.rotation }
         this.recordEvent(causeId)
         this.score[winner]++
-        const next = afterPoint({ serving: this.serving, rotation: this.rotation }, winner)
+        const rally = this.newRally(before, winner, cause)
+        if (rally) {
+            this.scoreEvents[this.scoreEvents.length - 1].rallyId = rally.client_id
+            this.rallyLog = [...this.rallyLog, { id: rally.client_id, winner }]
+            this.sendRally(rally)
+        }
+        const next = afterPoint(before, winner)
         this.serving = next.serving
         this.rotation = next.rotation
         this.closeRally()
@@ -498,6 +529,79 @@ export class GameComponent implements OnInit, OnDestroy{
             const who = setWon === 'home' ? 'CASA' : 'OSPITI'
             if (confirm(`Set ${this.setNumber} vinto da ${who} ${this.score.home}-${this.score.guests}: chiudere il set?`)) this.endSet()
         }
+    }
+
+    private newRally(before: { serving: Team; rotation: number }, winner: Team, cause: string): Rally | null {
+        const set = this.globalService.currentSet()
+        if (!set?.id) return null
+        const p1 = this.starting_players.length === 6 ? this.starting_players[serverIndex(before.rotation)] : null
+        return {
+            set: set.id,
+            number: this.rallyLog.length + 1,
+            serving: before.serving,
+            rotation: before.rotation,
+            p1_player: p1?.id ?? null,
+            winner,
+            home_score: this.score.home,
+            guest_score: this.score.guests,
+            cause: cause.slice(0, 40),
+            client_id: newClientId(),
+        }
+    }
+
+    // Saved with retries: the client id makes a repeated create harmless
+    private sendRally(rally: Rally): void {
+        if (!this.unsentRallies.some(r => r.client_id === rally.client_id)) this.unsentRallies = [...this.unsentRallies, rally]
+        this.saveState()
+        this.ralliesService.createRally(rally).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
+            next: () => {
+                this.unsentRallies = this.unsentRallies.filter(r => r.client_id !== rally.client_id)
+                // Undone while the create was on its way: delete it now that it exists
+                if (this.deletedRallies.has(rally.client_id)) this.deleteRallyOnServer(rally.client_id)
+                this.saveState()
+            },
+            error: (err) => {
+                if (err?.status === 409) {
+                    this.setReadOnly('La partita è terminata: i punti non vengono più salvati')
+                    return
+                }
+                console.error('Errore salvataggio rally', err)
+                this.scheduleRallyRetry()
+            }
+        })
+    }
+
+    private removeRally(id: string): void {
+        this.rallyLog = this.rallyLog.filter(r => r.id !== id)
+        this.unsentRallies = this.unsentRallies.filter(r => r.client_id !== id)
+        this.deletedRallies.add(id)
+        this.deleteRallyOnServer(id)
+    }
+
+    private deleteRallyOnServer(id: string): void {
+        if (!this.unsentRallyDeletes.includes(id)) this.unsentRallyDeletes = [...this.unsentRallyDeletes, id]
+        this.ralliesService.deleteRally(id).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
+            next: () => this.rallyDeleted(id),
+            error: (err) => {
+                // 404: not created yet (or already gone): sendRally deletes it when the create lands
+                if (err?.status === 404) this.rallyDeleted(id)
+                else this.scheduleRallyRetry()
+            }
+        })
+    }
+
+    private rallyDeleted(id: string): void {
+        this.unsentRallyDeletes = this.unsentRallyDeletes.filter(x => x !== id)
+        this.saveState()
+    }
+
+    private scheduleRallyRetry(): void {
+        if (this.rallyRetryTimer || this.readOnlyReason) return
+        this.rallyRetryTimer = setTimeout(() => {
+            this.rallyRetryTimer = null
+            this.unsentRallyDeletes.forEach(id => this.deleteRallyOnServer(id))
+            this.unsentRallies.forEach(r => this.sendRally(r))
+        }, 5000)
     }
 
     // Who serves: chosen at the start of the set, can be corrected at any time (no rotation)
@@ -560,7 +664,9 @@ export class GameComponent implements OnInit, OnDestroy{
             return
         }
         const p = this.scoreEvents[i].prev
+        const rallyId = this.scoreEvents[i].rallyId
         this.scoreEvents = this.scoreEvents.slice(0, i)
+        if (rallyId) this.removeRally(rallyId)
         this.score.home = p.home
         this.score.guests = p.guests
         this.serving = p.serving
@@ -1038,6 +1144,7 @@ export class GameComponent implements OnInit, OnDestroy{
         this.score.home = 0
         this.rotation = 0
         this.scoreEvents = []
+        this.rallyLog = []
         this.sideSwitched = false
         if (this.setNumber > 1 && isDecidingSet(this.setNumber, this.format)) {
             // Deciding set: a new toss decides serve and sides
@@ -1156,7 +1263,7 @@ export class GameComponent implements OnInit, OnDestroy{
             this.showError('unsaved', 'Ci sono tocchi non salvati: premi Riprova o Scarta prima di terminare')
             return
         }
-        if (this.busy) {
+        if (this.busy || this.unsentRallies.length > 0 || this.unsentRallyDeletes.length > 0) {
             this.showError('pending', 'Salvataggio in corso: attendi e premi di nuovo FINE MATCH')
             return
         }
