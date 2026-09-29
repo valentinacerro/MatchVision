@@ -228,9 +228,11 @@ def _share(won, total):
     return {'won': won, 'total': total, 'pct': pct}
 
 
-def create_rally_table(rallies):
+def create_rally_table(rallies, by='rotation'):
     """
     rallies: a Rally queryset (a set or a whole match).
+    by: 'rotation' (rotation index within a set) or 'p1' (player in position 1, comparable across sets
+        whose lineups started in different rotations).
     Returns {'total', 'sideout', 'breakpoint', 'rotations': [{rotation, p1, sideout, breakpoint}]}.
     """
     df = pd.DataFrame(list(rallies.values('serving', 'rotation', 'winner', 'p1_player__number')))
@@ -251,16 +253,27 @@ def create_rally_table(rallies):
         return _share(table.loc[phase, 'sum'], table.loc[phase, 'count'])
 
     rotations = []
-    for rotation, group in df.groupby('rotation'):
-        by_phase = group.groupby('phase')['won'].agg(['sum', 'count'])
-        # Player in position 1 in this rotation, if it is always the same one (e.g. within a set)
-        p1 = group['p1_player__number'].dropna().unique()
-        rotations.append({
-            'rotation': int(rotation) + 1,
-            'p1': int(p1[0]) if len(p1) == 1 else None,
-            'sideout': phase_share(by_phase, 'sideout'),
-            'breakpoint': phase_share(by_phase, 'breakpoint'),
-        })
+    if by == 'p1' and df['p1_player__number'].notna().all():
+        # One row per player in P1 (rotation label not meaningful across sets)
+        for p1, group in df.groupby('p1_player__number'):
+            by_phase = group.groupby('phase')['won'].agg(['sum', 'count'])
+            rotations.append({
+                'rotation': None,
+                'p1': int(p1),
+                'sideout': phase_share(by_phase, 'sideout'),
+                'breakpoint': phase_share(by_phase, 'breakpoint'),
+            })
+    else:
+        for rotation, group in df.groupby('rotation'):
+            by_phase = group.groupby('phase')['won'].agg(['sum', 'count'])
+            # Player in position 1 in this rotation, if it is always the same one (e.g. within a set)
+            p1 = group['p1_player__number'].dropna().unique()
+            rotations.append({
+                'rotation': int(rotation) + 1,
+                'p1': int(p1[0]) if len(p1) == 1 else None,
+                'sideout': phase_share(by_phase, 'sideout'),
+                'breakpoint': phase_share(by_phase, 'breakpoint'),
+            })
 
     return {
         'total': int(len(df)),

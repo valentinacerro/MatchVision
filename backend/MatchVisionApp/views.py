@@ -10,6 +10,23 @@ from .serializers import SetUpdateSerializer, MatchUpdateSerializer, PlayerSeria
 import pandas as pd
 from .utils import create_table_match_stats, create_table_set_stats, create_table_set_player, create_kpi_table, create_rally_table
 
+def refused_write(match, request):
+    """
+    Reason to refuse a write from the game screen, or None:
+    - the match is finished, or
+    - another page took control of it (the live state was last saved by a different writer).
+    """
+    if match is None:
+        return None
+    if match.results:
+        return "Partita terminata"
+    writer = request.data.get('writer')
+    owner = (match.live_state or {}).get('writer')
+    if writer and owner and writer != owner:
+        return "Partita aperta su un altro dispositivo"
+    return None
+
+
 # USER
 # create user
 @api_view(['POST'])
@@ -214,9 +231,20 @@ def createEvent(request):
     existing = Event.objects.filter(client_id=client_id).first() if client_id else None
     if existing:
         return Response(EventSerializer(existing).data, status=status.HTTP_200_OK)
+    target = Set.objects.select_related('match').filter(pk = request.data.get('set')).first()
+    reason = refused_write(target.match if target else None, request)
+    if reason:
+        return Response({"error": reason}, status=status.HTTP_409_CONFLICT)
     serializer = EventSerializer(data = request.data)
     if serializer.is_valid():
-        serializer.save()
+        try:
+            with transaction.atomic():
+                serializer.save()
+        except IntegrityError:
+            existing = Event.objects.filter(client_id=serializer.validated_data.get('client_id')).first()
+            if not existing:
+                return Response({"error": "Evento non valido"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(EventSerializer(existing).data, status=status.HTTP_200_OK)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
@@ -242,10 +270,11 @@ def createTouch(request):
         existing = Touch.objects.filter(client_id=client_id).first()
         if existing:
             return Response(TouchSerializer(existing).data, status=status.HTTP_200_OK)
-    # No new touches in a finished match
+    # No new touches in a finished match, or from a page that lost control of it
     target = Set.objects.select_related('match').filter(pk = request.data.get('set')).first()
-    if target and target.match.results:
-        return Response({"error": "Partita terminata"}, status=status.HTTP_409_CONFLICT)
+    reason = refused_write(target.match if target else None, request)
+    if reason:
+        return Response({"error": reason}, status=status.HTTP_409_CONFLICT)
     serializer = TouchSerializer(data = request.data)
     if serializer.is_valid():
         try:
@@ -398,8 +427,9 @@ def createRally(request):
     if existing:
         return Response(RallySerializer(existing).data, status=status.HTTP_200_OK)
     target = Set.objects.select_related('match').filter(pk=request.data.get('set')).first()
-    if target and target.match.results:
-        return Response({"error": "Partita terminata"}, status=status.HTTP_409_CONFLICT)
+    reason = refused_write(target.match if target else None, request)
+    if reason:
+        return Response({"error": reason}, status=status.HTTP_409_CONFLICT)
     serializer = RallySerializer(data=request.data)
     if serializer.is_valid():
         try:
@@ -426,7 +456,8 @@ def getSetRallies(request, pk):
 # Side-out / break-point statistics
 @api_view(['GET'])
 def getMatchRallyStats(request, pk):
-    return Response(create_rally_table(Rally.objects.filter(set__match_id=pk)))
+    # Over a whole match the lineup may start differently in each set: group by the player in P1
+    return Response(create_rally_table(Rally.objects.filter(set__match_id=pk), by='p1'))
 
 @api_view(['GET'])
 def getSetRallyStats(request, pk):
