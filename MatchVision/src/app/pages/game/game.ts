@@ -37,7 +37,7 @@ interface Snapshot {
     rallyIds: string[] // client ids of the touches of the rally this point closed (to reopen it on undo)
 }
 // A score change caused by a touch (cause = its client_id) or by the scout (cause = null)
-interface ScoreEvent { cause: string | null; prev: Snapshot; rallyId?: string }
+interface ScoreEvent { cause: string | null; prev: Snapshot; rallyId?: string; winner?: Team }
 
 // Everything needed to resume a match that is being scouted (saved touches are on the server)
 interface LiveState {
@@ -73,6 +73,9 @@ interface LiveState {
     subs: Substitution[]
     unsentEvents: GameEvent[]
     liberoFor: number[]
+    nextRallyNumber: number
+    outForMatch: number[] // injured players replaced by an exceptional substitution (no re-entry)
+    guestTimeOuts: number
 }
 
 // A substitution of this set: the starter left for the sub; returned once the starter re-entered
@@ -160,6 +163,10 @@ export class GameComponent implements OnInit, OnDestroy{
     private unsentEvents: GameEvent[] = []
     // Starters the libero replaces in the back row; empty = libero managed by hand
     liberoFor: number[] = []
+    private nextRallyNumber = 1 // only grows within a set (a removed rally keeps its number used)
+    private rallyCreatedAt = new Map<string, number>() // last create attempt: a late create may still land
+    outForMatch: number[] = []
+    guestTimeOuts: number = 2
     info: string = ''
     private infoTimer: any = null
     private autoSelected: Player | null = null // the server preselected by the app, not by the scout
@@ -261,6 +268,8 @@ export class GameComponent implements OnInit, OnDestroy{
         this.selectedPlayer = null
         clearTimeout(this.saveTimer)
         clearTimeout(this.retryTimer)
+        clearTimeout(this.rallyRetryTimer)
+        this.rallyRetryTimer = null
         this.saveTimer = null
         this.showError('readonly', reason)
     }
@@ -303,6 +312,9 @@ export class GameComponent implements OnInit, OnDestroy{
             subs: this.subs,
             unsentEvents: this.unsentEvents,
             liberoFor: this.liberoFor,
+            nextRallyNumber: this.nextRallyNumber,
+            outForMatch: this.outForMatch,
+            guestTimeOuts: this.guestTimeOuts,
         }
     }
 
@@ -316,7 +328,7 @@ export class GameComponent implements OnInit, OnDestroy{
         this.saveTimer = setTimeout(() => this.pushState(id, state), 800)
     }
 
-    private pushState(id: number, state: LiveState): void {
+    private pushState(id: number, state: LiveState, onSaved?: () => void): void {
         this.saveTimer = null
         clearTimeout(this.retryTimer)
         if (this.endingMatch || this.readOnlyReason) return
@@ -326,6 +338,7 @@ export class GameComponent implements OnInit, OnDestroy{
             next: (res) => {
                 this.serverRev = res.live_state?.rev ?? this.serverRev + 1
                 this.clearError('snapshot')
+                onSaved?.()
                 this.cdr.detectChanges()
             },
             error: (err) => {
@@ -442,6 +455,9 @@ export class GameComponent implements OnInit, OnDestroy{
         this.subs = s.subs ?? []
         this.unsentEvents = s.unsentEvents ?? []
         this.liberoFor = s.liberoFor ?? []
+        this.nextRallyNumber = s.nextRallyNumber ?? ((s.rallyLog ?? []).length + 1)
+        this.outForMatch = s.outForMatch ?? []
+        this.guestTimeOuts = s.guestTimeOuts ?? 2
         this.rallySeq = s.rallySeq ?? 0
         this.touchSeq = (s.order ?? []).length + 1000 // re-sent and new touches come after the known ones
     }
@@ -461,21 +477,46 @@ export class GameComponent implements OnInit, OnDestroy{
     private finishResume(state: LiveState): void {
         this.resuming = false
         this.clearError('match')
+        this.updateSuggestion()
+        this.showInfo('Partita ripresa')
+        this.cdr.detectChanges()
+        // Opening the match here takes control of it: the other device can no longer write.
+        // Only then the data not saved before the reload is sent again.
+        const id = this.matchId
+        if (!id) return
+        const claim = this.buildState()
+        this.latestState = claim
+        try { localStorage.setItem(STATE_KEY + id, JSON.stringify(claim)) } catch {}
+        this.pushState(id, claim, () => this.afterClaim(state))
+    }
+
+    private afterClaim(state: LiveState): void {
         // Touches not saved before the reload are sent again (their client_id prevents duplicates)
         const saved = new globalThis.Set(this.touches.map(t => t.client_id))
         for (const t of state.unsent ?? []) {
             if (t.client_id && saved.has(t.client_id)) continue
             this.sendTouch({ ...t, seq: this.seqOf(state, t.client_id), rally: this.rallyOf(state, t.client_id) })
         }
-        // Points not saved before the reload are sent again, deletes too
         this.unsentRallyDeletes.forEach(id => this.deleteRallyOnServer(id))
         this.unsentRallies.forEach(r => this.sendRally(r))
         this.unsentEvents.forEach(e => this.sendEvent(e))
-        this.updateSuggestion()
-        this.showInfo('Partita ripresa')
-        // This device had changes the server did not get: send them now
-        if (this.pendingLocalPush) this.saveState()
-        this.cdr.detectChanges()
+        this.reconcileRallies()
+    }
+
+    // Rallies on the server that this state does not know (e.g. saved by a device that then lost
+    // control) are removed, so side-out / break-point match the score
+    private reconcileRallies(): void {
+        const set = this.globalService.currentSet()
+        if (!set?.id) return
+        this.ralliesService.getSetRallies(set.id).subscribe({
+            next: (rallies) => {
+                const known = new globalThis.Set([...this.rallyLog.map(r => r.id), ...this.unsentRallies.map(r => r.client_id)])
+                rallies.filter(r => !known.has(r.client_id)).forEach(r => this.deleteRallyOnServer(r.client_id))
+                const maxNumber = Math.max(0, ...rallies.map(r => r.number))
+                if (maxNumber >= this.nextRallyNumber) this.nextRallyNumber = maxNumber + 1
+            },
+            error: (err) => console.error('Errore controllo rally', err),
+        })
     }
 
     // Leaving clears the global match state; "Riprendi scout" reloads it from the server
@@ -497,14 +538,23 @@ export class GameComponent implements OnInit, OnDestroy{
         this.awardPoint(team)
     }
 
-    // "−" = correction of the score only (serve and rotation are not touched)
+    // "−" = correction. If the latest score change was a point for that team, it is taken back
+    // completely (score, serve, rotation, its rally); otherwise only the score goes back.
     decreaseScore(team: Team) {
         if (this.score[team] === 0) return
+        const last = this.scoreEvents.length - 1
+        if (last >= 0 && this.scoreEvents[last].winner === team) {
+            this.restoreEvent(last)
+            this.showInfo('Punto annullato')
+            this.updateSuggestion()
+            this.saveState()
+            return
+        }
         this.recordEvent(null)
         this.score[team]--
         // The score went back: the last point of that team is removed from the rally stats too
-        const last = [...this.rallyLog].reverse().find(r => r.winner === team)
-        if (last) this.removeRally(last.id)
+        const lastRally = [...this.rallyLog].reverse().find(r => r.winner === team)
+        if (lastRally) this.removeRally(lastRally.id)
         this.closeRally()
         this.updateSuggestion()
         this.saveState()
@@ -525,6 +575,7 @@ export class GameComponent implements OnInit, OnDestroy{
     private awardPoint(winner: Team, cause: string = '', causeId: string | null = null): void {
         const before = { serving: this.serving, rotation: this.rotation }
         this.recordEvent(causeId)
+        this.scoreEvents[this.scoreEvents.length - 1].winner = winner
         this.score[winner]++
         const rally = this.newRally(before, winner, cause)
         if (rally) {
@@ -535,6 +586,8 @@ export class GameComponent implements OnInit, OnDestroy{
         const next = afterPoint(before, winner)
         this.serving = next.serving
         this.rotation = next.rotation
+        // After a rotation the libero may have left the court: a selection off court is void
+        if (!this.selectedOnCourt) this.selectedPlayer = null
         this.closeRally()
         if (cause) this.showInfo(`Punto ${winner === 'home' ? 'CASA' : 'OSPITI'} (${cause})${next.rotated ? ' · rotazione' : ''}`)
         if (!this.sideSwitched && sideSwitchDue(this.score, this.setNumber, this.format)) {
@@ -557,7 +610,7 @@ export class GameComponent implements OnInit, OnDestroy{
         const p1 = this.starting_players.length === 6 ? this.starting_players[serverIndex(before.rotation)] : null
         return {
             set: set.id,
-            number: this.rallyLog.length + 1,
+            number: this.nextRallyNumber++,
             serving: before.serving,
             rotation: before.rotation,
             p1_player: p1?.id ?? null,
@@ -573,7 +626,8 @@ export class GameComponent implements OnInit, OnDestroy{
     private sendRally(rally: Rally): void {
         if (!this.unsentRallies.some(r => r.client_id === rally.client_id)) this.unsentRallies = [...this.unsentRallies, rally]
         this.saveState()
-        this.ralliesService.createRally(rally).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
+        this.rallyCreatedAt.set(rally.client_id, Date.now())
+        this.ralliesService.createRally({ ...rally, writer: this.writer }).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
             next: () => {
                 this.unsentRallies = this.unsentRallies.filter(r => r.client_id !== rally.client_id)
                 // Undone while the create was on its way: delete it now that it exists
@@ -582,7 +636,7 @@ export class GameComponent implements OnInit, OnDestroy{
             },
             error: (err) => {
                 if (err?.status === 409) {
-                    this.setReadOnly('La partita è terminata: i punti non vengono più salvati')
+                    this.setReadOnly('La partita è terminata o aperta su un altro dispositivo: ricarica la pagina per riprenderla qui')
                     return
                 }
                 console.error('Errore salvataggio rally', err)
@@ -603,8 +657,10 @@ export class GameComponent implements OnInit, OnDestroy{
         this.ralliesService.deleteRally(id).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
             next: () => this.rallyDeleted(id),
             error: (err) => {
-                // 404: not created yet (or already gone): sendRally deletes it when the create lands
-                if (err?.status === 404) this.rallyDeleted(id)
+                // 404: not created yet, or already gone. A create sent in the last minute may still
+                // land (e.g. after a timeout): keep trying for a while, then give up
+                const recent = Date.now() - (this.rallyCreatedAt.get(id) ?? 0) < 60000
+                if (err?.status === 404 && !recent) this.rallyDeleted(id)
                 else this.scheduleRallyRetry()
             }
         })
@@ -629,18 +685,23 @@ export class GameComponent implements OnInit, OnDestroy{
     private recordGameEvent(event_type: string, details: any = {}, team: Team = 'home'): void {
         const set = this.globalService.currentSet()
         if (!set?.id) return
-        this.sendEvent({ event_type, set: set.id, team, details, home_score: this.score.home, guest_score: this.score.guests, client_id: newClientId() })
+        this.sendEvent({ event_type, set: set.id, team, details, home_score: this.score.home, guest_score: this.score.guests,
+            client_id: newClientId(), created_at: new Date().toISOString() })
     }
 
     private sendEvent(event: GameEvent): void {
         if (!this.unsentEvents.some(e => e.client_id === event.client_id)) this.unsentEvents = [...this.unsentEvents, event]
         this.saveState()
-        this.eventsService.createEvent(event).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
+        this.eventsService.createEvent({ ...event, writer: this.writer }).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
             next: () => {
                 this.unsentEvents = this.unsentEvents.filter(e => e.client_id !== event.client_id)
                 this.saveState()
             },
             error: (err) => {
+                if (err?.status === 409) {
+                    this.setReadOnly('La partita è terminata o aperta su un altro dispositivo: ricarica la pagina per riprenderla qui')
+                    return
+                }
                 console.error('Errore salvataggio evento', err)
                 this.scheduleRallyRetry()
             }
@@ -706,6 +767,12 @@ export class GameComponent implements OnInit, OnDestroy{
             this.showInfo('Tocco eliminato: il punto resta, il punteggio è cambiato dopo')
             return
         }
+        this.restoreEvent(i)
+        this.showInfo('Punto annullato')
+    }
+
+    // Takes back the latest score change i: state before it, its rally, the rally reopened
+    private restoreEvent(i: number): void {
         const p = this.scoreEvents[i].prev
         const rallyId = this.scoreEvents[i].rallyId
         this.scoreEvents = this.scoreEvents.slice(0, i)
@@ -725,7 +792,7 @@ export class GameComponent implements OnInit, OnDestroy{
         this.pendingTouches = retag(this.pendingTouches)
         this.failedTouches = retag(this.failedTouches)
         this.rallySeq = p.rallySeq
-        this.showInfo('Punto annullato')
+        if (!this.selectedOnCourt) this.selectedPlayer = null
     }
 
     private closeRally(): void {
@@ -835,11 +902,20 @@ export class GameComponent implements OnInit, OnDestroy{
 
     displayedAt(i: number): Player {
         const p = this.starting_players[i]
-        if (!this.liberoAuto || !this.liberoFor.includes(p.id)) return p
-        const position = (i - this.rotation + 6) % 6 // 0 = P1, 4 = P5, 5 = P6: back row
-        const backRow = position === 0 || position === 4 || position === 5
-        const serves = position === 0 && this.serving === 'home'
-        return backRow && !serves ? this.libero as Player : p
+        return this.liberoSlot === i ? this.libero as Player : p
+    }
+
+    // Lineup index where the libero is now, or -1. Only one position at a time, even if the
+    // chosen players could be in the back row together (the first in P1, P6, P5 order wins).
+    get liberoSlot(): number {
+        if (!this.liberoAuto || this.starting_players.length !== 6) return -1
+        for (const position of [0, 5, 4]) { // P1, P6, P5
+            const i = (position + this.rotation) % 6
+            const p = this.starting_players[i]
+            const serves = position === 0 && this.serving === 'home'
+            if (this.liberoFor.includes(p.id) && !serves) return i
+        }
+        return -1
     }
 
     get liberoOnCourt(): boolean {
@@ -873,6 +949,11 @@ export class GameComponent implements OnInit, OnDestroy{
 
     openStats(): void { this.statsPanel.open() }
 
+    // Between FINE SET and NUOVO SET the scoreboard still shows the closed set and its score
+    get displayedSetNumber(): number {
+        return this.endSetClicked && !this.allSetsPlayed ? this.setNumber - 1 : this.setNumber
+    }
+
     get statsSetLabel(): string {
         const set = this.globalService.currentSet()
         return set?.number ? `Set ${set.number}` : 'Set'
@@ -883,6 +964,7 @@ export class GameComponent implements OnInit, OnDestroy{
 
     openNewEventModal(): void {
         this.eventOccurred.event_type = '' // no leftover choice from a closed modal
+        this.eventOccurred.team = 'home'
         this.newEventModal.open()
     }
 
@@ -902,10 +984,18 @@ export class GameComponent implements OnInit, OnDestroy{
     }
 
     // Substitution requested in the modal: checked against the rules, then applied
-    applyChange(change: { out: Player[]; in: Player[] }): void {
+    applyChange(change: { out: Player[]; in: Player[]; exceptional?: boolean }): void {
         const { out, in: entering } = change
+        if (this.endSetClicked || this.locked) {
+            this.showError('change', 'Set chiuso: i cambi valgono per il prossimo set, premi NUOVO SET')
+            return
+        }
         if (out.length === 0 || out.length !== entering.length) {
             this.showError('change', 'Seleziona lo stesso numero di giocatori in uscita e in entrata')
+            return
+        }
+        if (change.exceptional) {
+            this.applyExceptionalChange(out, entering)
             return
         }
         if (this.changeCounter < out.length) {
@@ -938,8 +1028,31 @@ export class GameComponent implements OnInit, OnDestroy{
         this.onLineupChanged()
     }
 
+    // FIVB 15.7: an injured player who cannot be replaced legally is replaced by anyone not on court;
+    // it does not count as a substitution and the injured player cannot come back in this match
+    private applyExceptionalChange(out: Player[], entering: Player[]): void {
+        if (out.length !== 1) {
+            this.showError('change', 'Il cambio eccezionale è uno per uno')
+            return
+        }
+        const [p, q] = [out[0], entering[0]]
+        if (this.outForMatch.includes(q.id)) {
+            this.showError('change', `#${q.number} è uscito per infortunio: non può rientrare in questa partita`)
+            return
+        }
+        this.clearError('change')
+        this.starting_players = this.starting_players.map(x => x.id === p.id ? q : x)
+        this.bench_players = [...this.bench_players.filter(x => x.id !== q.id), p]
+        this.liberoFor = this.liberoFor.map(id => id === p.id ? q.id : id)
+        this.outForMatch = [...this.outForMatch, p.id]
+        this.recordGameEvent('MEDICAL_CHANGE', { out: [p.id], in: [q.id] })
+        this.showInfo(`Cambio eccezionale: #${q.number} per #${p.number} (infortunio)`)
+        this.onLineupChanged()
+    }
+
     // Why this substitution is not allowed, or '' (FIVB 15.6)
     private substitutionProblem(out: Player, entering: Player): string {
+        if (this.outForMatch.includes(entering.id)) return `#${entering.number} è uscito per infortunio: non può rientrare in questa partita`
         const asSub = this.subs.find(s => s.sub === out.id && !s.returned)
         if (asSub) {
             // A substitute can leave only for the starter he replaced
@@ -970,26 +1083,39 @@ export class GameComponent implements OnInit, OnDestroy{
 
     
     registerNewEvent(): void {
+        // Time-outs and cards can be for either team (chosen in the modal, CASA by default)
+        const team: Team = this.eventOccurred.team ?? 'home'
         if (this.eventOccurred.event_type !== EventType.TECHNICAL_TIMEOUT) this.clearError('timeout')
+        if ((this.endSetClicked || !this.hasActiveSet || this.locked) && this.eventOccurred.event_type) {
+            this.showError('locked', 'Set chiuso: premi NUOVO SET per registrare eventi')
+            this.eventOccurred = {event_type: ''}
+            return
+        }
+        const who = team === 'home' ? 'CASA' : 'OSPITI'
         switch(this.eventOccurred.event_type) {
-            case EventType.TECHNICAL_TIMEOUT:
-                if (this.leftTimeOuts === 0) {
-                    this.showError('timeout', 'Time-out esauriti in questo set (2 per set)')
+            case EventType.TECHNICAL_TIMEOUT: {
+                const left = team === 'home' ? this.leftTimeOuts : this.guestTimeOuts
+                if (left === 0) {
+                    this.showError('timeout', `Time-out ${who} esauriti in questo set (2 per set)`)
                     break
                 }
-                this.leftTimeOuts--
+                if (team === 'home') this.leftTimeOuts--
+                else this.guestTimeOuts--
                 this.clearError('timeout')
-                this.recordGameEvent('TECHNICAL_TIMEOUT')
+                this.recordGameEvent('TECHNICAL_TIMEOUT', {}, team)
+                this.showInfo(`Time-out ${who}`)
                 break
+            }
             case EventType.YELLOW_CARD:
-                this.y_card_counter++
-                this.recordGameEvent('YELLOW_CARD')
+                if (team === 'home') this.y_card_counter++
+                this.recordGameEvent('YELLOW_CARD', {}, team)
+                this.showInfo(`Cartellino giallo ${who}`)
                 break
             case EventType.RED_CARD:
-                // FIVB 21.3: a penalty gives a point and the serve to the opponent
-                this.r_card_counter++
-                this.recordGameEvent('RED_CARD')
-                if (!this.endSetClicked && this.hasActiveSet) this.awardPoint('guests', 'Cartellino rosso')
+                // FIVB 21.3: a penalty gives a point and the serve to the opponent of the sanctioned team
+                if (team === 'home') this.r_card_counter++
+                this.recordGameEvent('RED_CARD', {}, team)
+                this.awardPoint(team === 'home' ? 'guests' : 'home', `Cartellino rosso ${who}`)
                 break
             case EventType.DOUBLE_FAULT:
                 this.cancelCurrentRally()
@@ -1087,7 +1213,7 @@ export class GameComponent implements OnInit, OnDestroy{
         const { seq, rally, uncertain, ...payload } = touch
         this.pendingTouches = [...this.pendingTouches, touch]
         this.saveState() // an unsent touch survives a reload
-        this.touchesService.createTouch(payload).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
+        this.touchesService.createTouch({ ...payload, writer: this.writer }).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
             next: (res) => {
                 console.log(res)
                 // The entry may have been re-tagged meanwhile (undo of a point): use its current rally
@@ -1107,7 +1233,7 @@ export class GameComponent implements OnInit, OnDestroy{
                 const current = this.pendingTouches.find(t => t.client_id === touch.client_id) ?? touch
                 this.pendingTouches = this.pendingTouches.filter(t => t.client_id !== touch.client_id)
                 this.failedTouches = [...this.failedTouches, { ...current, uncertain: current.uncertain || err?.name === 'TimeoutError' }]
-                if (err?.status === 409) this.setReadOnly('La partita è terminata: non si possono registrare altri tocchi')
+                if (err?.status === 409) this.setReadOnly('La partita è terminata o aperta su un altro dispositivo: ricarica la pagina per riprenderla qui')
                 this.refreshStatus()
                 this.saveState()
                 this.cdr.detectChanges()
@@ -1145,7 +1271,7 @@ export class GameComponent implements OnInit, OnDestroy{
     private removeUncertainTouch(touch: TrackedTouch): void {
         const { seq, rally, uncertain, ...payload } = touch
         this.pendingDeletes++
-        this.touchesService.createTouch(payload).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
+        this.touchesService.createTouch({ ...payload, writer: this.writer }).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
             next: (res) => {
                 this.pendingDeletes--
                 // If the delete fails, the touch goes back to the unsaved list so Scarta can try again
@@ -1186,7 +1312,13 @@ export class GameComponent implements OnInit, OnDestroy{
     assignPlayers(event: any) {
         this.selectedPlayer = null
         this.liberoFor = event.liberoFor ?? []
-        this.starting_players = event.startingPlayers
+        // I..VI are the positions now on court: with the set under way (rotation > 0) the lineup
+        // is stored so that each player shows up in the position chosen
+        const chosen: Player[] = event.startingPlayers
+        const lineup: Player[] = new Array(6)
+        chosen.forEach((p, k) => lineup[(k + this.rotation) % 6] = p)
+        this.starting_players = chosen.length === 6 ? lineup : chosen
+        if (this.score.home + this.score.guests > 0) this.recordGameEvent('LINEUP', { lineup: this.starting_players.map(p => p.id), rotation: this.rotation })
         this.libero = event.libero
         this.bench_players = event.benchPlayers
         this.bench_libero = event.benchLibero
@@ -1288,8 +1420,9 @@ export class GameComponent implements OnInit, OnDestroy{
         this.doubleChangeCounter = 2
         this.subs = []
         this.leftTimeOuts = 2
-        this.y_card_counter = 0
-        this.r_card_counter = 0
+        this.guestTimeOuts = 2
+        this.nextRallyNumber = 1
+        // Sanctions (cards) are for the whole match: the counters are not reset
 
         this.endSetClicked = false
         this.clearError('locked')

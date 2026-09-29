@@ -4,6 +4,13 @@
 		<button type="button" class="btn-close" aria-label="Close" (click)="modal.close()"></button>
 	</div>
 	<div class="modal-body">
+        <!-- Time-outs and cards can be for either team -->
+        <div class="btn-group mb-3" role="group" aria-label="Squadra">
+            <input type="radio" class="btn-check" name="event-team" id="event-team-home" value="home" [(ngModel)]="eventOccurred.team">
+            <label class="btn btn-outline-dark" for="event-team-home">CASA</label>
+            <input type="radio" class="btn-check" name="event-team" id="event-team-guests" value="guests" [(ngModel)]="eventOccurred.team">
+            <label class="btn btn-outline-dark" for="event-team-guests">OSPITI</label>
+        </div>
         <div class="btn-group-vertical btn-group-lg" role="group" aria-label="Touches list">
             <input type="radio" class="btn-check" name="events-radio" id="time-out-btn" value="TECHNICAL_TIMEOUT" [(ngModel)]="eventOccurred.event_type">
             <label class="btn btn-outline-secondary" for="time-out-btn">Time-out <img src="/icons/time-out-icon.png" alt="time-out-icon"></label>

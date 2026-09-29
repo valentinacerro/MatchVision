@@ -52,6 +52,10 @@
 
 	</div>
 	<div class="modal-footer">
+        <div class="form-check me-auto">
+            <input class="form-check-input" type="checkbox" id="exceptional-change" [checked]="exceptional" (change)="exceptional = !exceptional">
+            <label class="form-check-label" for="exceptional-change">Cambio eccezionale (infortunio): non conta e il giocatore non può rientrare</label>
+        </div>
 		<button type="button" class="btn btn-outline-secondary btn-cancel" (click)="modal.close()">Annulla</button>
 		<button type="button" class="btn btn-primary btn-confirm" [disabled]="!canConfirm" (click)="confirm(modal)">Conferma cambio</button>
 	</div>

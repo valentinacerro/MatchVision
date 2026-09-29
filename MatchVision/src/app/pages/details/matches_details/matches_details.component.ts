@@ -128,20 +128,30 @@ export class MatchesDetailsComponent implements OnInit{
     }
 
     // CSV with numbers (';' separator, opens in Excel with Italian settings), downloaded as a file
+    // A CSV cell: numbers with the decimal comma, text quoted (and never read as a formula)
+    private cell(v: any): string {
+        if (v === null || v === undefined) return ''
+        if (typeof v === 'number') return String(v).replace('.', ',')
+        let text = String(v)
+        if (/^[=+\-@]/.test(text)) text = "'" + text
+        return '"' + text.replace(/"/g, '""') + '"'
+    }
+
     exportCSV(): void {
         const header = ['Fondamentale', 'Numero', 'Giocatore', 'Tot', '++', '+', '!', '—', '— —', 'Positività %', 'Efficienza %', 'Errori %']
-        const lines = [header.join(';')]
+        const lines = [header.map(h => this.cell(h)).join(';')]
         for (const r of this.rows) {
-            lines.push([r.fundamental, r.number ?? '', r.player, r.tot, r['++'], r['+'], r['!'], r['—'], r['— —'], r.positivita, r.efficienza, r.errori]
-                .map(v => String(v ?? '').replace('.', ',')).join(';'))
+            lines.push([r.fundamental, r.number, r.player, r.tot, r['++'], r['+'], r['!'], r['—'], r['— —'], r.positivita, r.efficienza, r.errori]
+                .map(v => this.cell(v)).join(';'))
         }
         if (this.rallies?.total) {
             lines.push('')
-            lines.push(['Rotazione', 'In P1', 'Side-out vinti', 'Side-out totali', 'Side-out %', 'Break-point vinti', 'Break-point totali', 'Break-point %'].join(';'))
+            lines.push(['Rotazione', 'In P1', 'Side-out vinti', 'Side-out totali', 'Side-out %', 'Break-point vinti', 'Break-point totali', 'Break-point %'].map(h => this.cell(h)).join(';'))
             const row = (label: string, p1: any, so: any, bp: any) =>
-                [label, p1 ?? '', so.won, so.total, so.pct ?? '', bp.won, bp.total, bp.pct ?? ''].map(v => String(v).replace('.', ',')).join(';')
-            lines.push(row('Totale', '', this.rallies.sideout, this.rallies.breakpoint))
-            for (const r of this.rallies.rotations) lines.push(row(`R${r.rotation}`, r.p1 !== null ? `#${r.p1}` : '', r.sideout, r.breakpoint))
+                [label, p1, so.won, so.total, so.pct, bp.won, bp.total, bp.pct].map(v => this.cell(v)).join(';')
+            lines.push(row('Totale', null, this.rallies.sideout, this.rallies.breakpoint))
+            for (const r of this.rallies.rotations)
+                lines.push(row(r.rotation !== null ? `R${r.rotation}` : '', r.p1 !== null ? `#${r.p1}` : null, r.sideout, r.breakpoint))
         }
         // BOM so Excel reads the accents correctly
         const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' })

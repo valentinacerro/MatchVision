@@ -8,6 +8,7 @@ export enum EventType {
 
 export class Event {
   constructor(
-    public event_type: EventType | string
+    public event_type: EventType | string,
+    public team?: 'home' | 'guests' // who the time-out or card is for (default CASA)
   ) {}
 }

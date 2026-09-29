@@ -27,6 +27,8 @@ export class BenchComponent implements OnInit, OnDestroy {
     error = ''
     private timer: any = null
     private request = 0
+    private inFlight = false
+    private skipped = 0
 
     constructor(private route: ActivatedRoute,
         private matchesService: MatchesService,
@@ -36,7 +38,18 @@ export class BenchComponent implements OnInit, OnDestroy {
     ngOnInit(): void {
         this.matchId = Number(this.route.snapshot.paramMap.get('matchId'))
         this.refresh()
-        this.timer = setInterval(() => { if (!document.hidden) this.refresh() }, REFRESH_MS)
+        this.timer = setInterval(() => {
+            if (document.hidden) return
+            // One refresh at a time: a slow answer is not overtaken by the next tick
+            if (this.inFlight) {
+                if (++this.skipped >= 3) {
+                    this.error = 'Aggiornamento lento: attendo la risposta del server'
+                    this.cdr.detectChanges()
+                }
+                return
+            }
+            this.refresh()
+        }, REFRESH_MS)
     }
 
     ngOnDestroy(): void {
@@ -60,12 +73,20 @@ export class BenchComponent implements OnInit, OnDestroy {
         this.refresh()
     }
 
+    // Set shown: the closed one until the next set starts (as on the game screen)
+    get setLabel(): number {
+        const l = this.live
+        return l && l.endSetClicked && !l.allSetsPlayed ? l.setNumber - 1 : l?.setNumber
+    }
+
     refresh(): void {
         const request = ++this.request
+        this.inFlight = true
         this.matchesService.getMatch(this.matchId).subscribe({
             next: (match) => {
                 if (request !== this.request) return
                 this.match = match
+                if (!match.live_state) this.scope = 'match' // over or not started: whole match
                 const setId = match.live_state?.setId
                 const bySet = this.scope === 'set' && setId
                 const kpi = bySet ? this.statsService.getSetKpi(setId) : this.statsService.getMatchKpi(this.matchId)
@@ -77,6 +98,8 @@ export class BenchComponent implements OnInit, OnDestroy {
                         this.rallies = rallies
                         this.updatedAt = new Date()
                         this.error = ''
+                        this.inFlight = false
+                        this.skipped = 0
                         this.cdr.detectChanges()
                     },
                     error: (err) => this.fail(request, err),
@@ -88,6 +111,7 @@ export class BenchComponent implements OnInit, OnDestroy {
 
     private fail(request: number, err: any): void {
         if (request !== this.request) return
+        this.inFlight = false
         console.error('Errore aggiornamento panchina', err)
         this.error = 'Aggiornamento non riuscito: riprovo tra poco'
         this.cdr.detectChanges()

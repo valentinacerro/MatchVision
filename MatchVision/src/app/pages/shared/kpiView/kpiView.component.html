@@ -33,9 +33,9 @@
                     <tr><th>Rotazione</th><th>In P1</th><th>Side-out</th><th></th><th>Break-point</th><th></th></tr>
                 </thead>
                 <tbody>
-                    @for (r of rallies.rotations; track r.rotation) {
+                    @for (r of rallies.rotations; track $index) {
                         <tr>
-                            <td>R{{ r.rotation }}</td>
+                            <td>{{ r.rotation !== null ? 'R' + r.rotation : '–' }}</td>
                             <td>{{ r.p1 !== null ? '#' + r.p1 : '' }}</td>
                             <td>{{ pct(r.sideout.pct) }}</td>
                             <td class="text-muted">{{ r.sideout.won }}/{{ r.sideout.total }}</td>

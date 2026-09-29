@@ -15,6 +15,7 @@ export interface Rally {
     guest_score: number
     cause: string
     client_id: string
+    writer?: string // the page that owns the match
 }
 
 @Injectable({
@@ -33,5 +34,9 @@ export class RalliesService {
     // By client id: an undo can delete a rally whose server id the page never received
     deleteRally(clientId: string): Observable<any> {
         return this.http.delete(`${this.apiUrl}/rallies/delete/${clientId}/`)
+    }
+
+    getSetRallies(setId: number): Observable<Rally[]> {
+        return this.http.get<Rally[]>(`${this.apiUrl}/sets/${setId}/rallies/`)
     }
 }

@@ -21,15 +21,17 @@ export class ChangePlayersModalComponent {
     @Input() bench_libero!: Player | null
     @Input() changesLeft: number = 6
 
-    @Output() changeRequested = new EventEmitter<{ out: Player[]; in: Player[] }>()
+    @Output() changeRequested = new EventEmitter<{ out: Player[]; in: Player[]; exceptional: boolean }>()
     @Output() swapLiberosClicked = new EventEmitter<void>()
 
     enteringPlayers: Player[] = []
     exitingPlayers: Player[] = []
+    exceptional = false // injury: FIVB 15.7, outside the normal substitution rules
 
     open() {
         this.exitingPlayers = []
         this.enteringPlayers = []
+        this.exceptional = false
         this.modalService.open(this.content, { ariaLabelledBy: 'modal-change-players', size: 'lg' })
     }
 
@@ -50,7 +52,7 @@ export class ChangePlayersModalComponent {
 
     confirm(modal: any): void {
         if (!this.canConfirm) return
-        this.changeRequested.emit({ out: [...this.exitingPlayers], in: [...this.enteringPlayers] })
+        this.changeRequested.emit({ out: [...this.exitingPlayers], in: [...this.enteringPlayers], exceptional: this.exceptional })
         modal.close()
     }
 

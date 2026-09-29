@@ -29,7 +29,8 @@ export interface RallyStats {
     total: number
     sideout: Share
     breakpoint: Share
-    rotations: { rotation: number; p1: number | null; sideout: Share; breakpoint: Share }[]
+    // rotation is null in match totals, which are grouped by the player in P1 instead
+    rotations: { rotation: number | null; p1: number | null; sideout: Share; breakpoint: Share }[]
 }
 
 @Injectable({

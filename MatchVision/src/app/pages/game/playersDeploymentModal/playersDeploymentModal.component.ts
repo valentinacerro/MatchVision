@@ -85,16 +85,34 @@ export class PlayersDeploymentModal {
             this.liberoFor = []
         } else {
             this.libero = player
-            // By default the libero comes in for the middle blockers
-            if (this.liberoFor.length === 0)
-                this.liberoFor = this.startingPlayers.filter(p => isMiddleBlocker(p)).map(p => p.id)
+            // By default the libero comes in for the two middle blockers opposite each other
+            if (this.liberoFor.length === 0) {
+                const middles = this.startingPlayers.filter(p => isMiddleBlocker(p))
+                this.liberoFor = middles.length === 2 && this.areOpposite(middles[0], middles[1])
+                    ? middles.map(p => p.id)
+                    : middles.slice(0, 1).map(p => p.id)
+            }
         }
     }
 
+    // At most two, normally opposite in the lineup (never in the back row together)
     toggleLiberoFor(player: Player): void {
-        this.liberoFor = this.liberoFor.includes(player.id)
-            ? this.liberoFor.filter(id => id !== player.id)
-            : [...this.liberoFor, player.id]
+        if (this.liberoFor.includes(player.id)) this.liberoFor = this.liberoFor.filter(id => id !== player.id)
+        else if (this.liberoFor.length < 2) this.liberoFor = [...this.liberoFor, player.id]
+    }
+
+    areOpposite(a: Player, b: Player): boolean {
+        const i = this.startingPlayers.findIndex(p => p.id === a.id)
+        const j = this.startingPlayers.findIndex(p => p.id === b.id)
+        return i >= 0 && j >= 0 && Math.abs(i - j) === 3
+    }
+
+    get liberoWarning(): string {
+        if (this.liberoFor.length !== 2) return ''
+        const [a, b] = this.liberoFor.map(id => this.startingPlayers.find(p => p.id === id)!)
+        return a && b && !this.areOpposite(a, b)
+            ? 'I due giocatori non sono opposti: quando sono entrambi in seconda linea il libero sostituisce solo il primo'
+            : ''
     }
 
     toggleBenchLibero(player: Player): void {

@@ -19,7 +19,8 @@ export class TouchesService {
         return this.http.get<Touch[]>(`${this.apiUrl}/sets/${setId}/touches/`);
     }
 
-    createTouch(touch: Touch): Observable<Touch> {
+    // writer: the page that owns the match (the server refuses writes from a page that lost it)
+    createTouch(touch: Touch & { writer?: string }): Observable<Touch> {
         return this.http.post<Touch>(`${this.apiUrl}/touches/create/`, touch);
     }
 

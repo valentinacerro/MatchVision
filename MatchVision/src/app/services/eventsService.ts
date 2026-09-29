@@ -12,6 +12,8 @@ export interface GameEvent {
     home_score: number
     guest_score: number
     client_id: string
+    created_at?: string // when it happened on the device (events sent later keep their order)
+    writer?: string
 }
 
 @Injectable({

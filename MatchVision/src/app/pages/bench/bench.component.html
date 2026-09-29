@@ -10,7 +10,7 @@
             </div>
             @if (live) {
                 <div class="score ms-auto text-center">
-                    <div class="set-label">SET {{ live.setNumber }} · set vinti {{ setsWon.home }}-{{ setsWon.guests }}</div>
+                    <div class="set-label">SET {{ setLabel }} · set vinti {{ setsWon.home }}-{{ setsWon.guests }}</div>
                     <div class="score-value">
                         <span [class.serving]="live.serving === 'home'">CASA {{ live.score.home }}</span>
                         <span class="mx-2">—</span>

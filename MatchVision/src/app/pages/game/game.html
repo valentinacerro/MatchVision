@@ -61,7 +61,7 @@
             </div>
 
             <div class="scoreboard p-1 col-2 d-flex flex-column align-items-center">
-                <span class="setNumber">SET {{ setNumber }}</span>
+                <span class="setNumber">SET {{ displayedSetNumber }}</span>
                 <div class="d-flex align-items-center">
                     <span class="team-score">{{ score.home }}</span>
                     <span class="separator mx-1">—</span>
@@ -174,8 +174,8 @@
 
         <div class="d-flex justify-content-between align-items-center bottom-bar rounded-3 shadow-lg">
             <button (click)="openPlayersDeploymentModal()" [disabled]="locked || endingSet" class="btn btn-outline-light btn-lg">SCHIERA GIOCATORI</button>
-            <button (click)="openNewEventModal()" [disabled]="locked || endingSet" class="btn btn-outline-light btn-lg">REGISTRA EVENTO</button>
-            <button (click)="openChangePlayersModal()" [disabled]="locked || endingSet" class="btn btn-outline-light btn-lg">EFFETTUA UN CAMBIO</button>
+            <button (click)="openNewEventModal()" [disabled]="locked || endingSet || endSetClicked || !hasActiveSet" class="btn btn-outline-light btn-lg">REGISTRA EVENTO</button>
+            <button (click)="openChangePlayersModal()" [disabled]="locked || endingSet || endSetClicked || !hasActiveSet" class="btn btn-outline-light btn-lg">EFFETTUA UN CAMBIO</button>
             <button (click)="doRotation()" [disabled]="locked || endingSet" class="btn btn-outline-light btn-lg">ROTAZIONE</button>
         
             <button (click)="togglePos()" [disabled]="locked || endingSet" class="btn btn-outline-light btn-lg">CAMBIO CAMPO</button>
