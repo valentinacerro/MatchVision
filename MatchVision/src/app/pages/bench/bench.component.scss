@@ -1,0 +1,17 @@
+.score-value {
+    font-size: 2rem;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+}
+
+.set-label {
+    color: #666;
+    font-weight: 600;
+}
+
+// The team serving is underlined
+.serving {
+    text-decoration: underline;
+    text-decoration-color: #ffc107;
+    text-decoration-thickness: 4px;
+}

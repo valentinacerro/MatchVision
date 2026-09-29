@@ -1,0 +1,39 @@
+<div class="bench container my-4">
+    <div class="bench-header card shadow p-3 mb-3">
+        <div class="d-flex flex-wrap align-items-center gap-3">
+            <div>
+                <h2 class="mb-0">{{ match?.name }}</h2>
+                <div class="text-muted small">
+                    Vista panchina · si aggiorna da sola
+                    @if (updatedAt) { · {{ updatedAt.toLocaleTimeString() }} }
+                </div>
+            </div>
+            @if (live) {
+                <div class="score ms-auto text-center">
+                    <div class="set-label">SET {{ live.setNumber }} · set vinti {{ setsWon.home }}-{{ setsWon.guests }}</div>
+                    <div class="score-value">
+                        <span [class.serving]="live.serving === 'home'">CASA {{ live.score.home }}</span>
+                        <span class="mx-2">—</span>
+                        <span [class.serving]="live.serving === 'guests'">{{ live.score.guests }} OSPITI</span>
+                    </div>
+                </div>
+            } @else if (match?.results?.length) {
+                <div class="ms-auto">Partita terminata · set vinti {{ setsWon.home }}-{{ setsWon.guests }}</div>
+            } @else if (match) {
+                <div class="ms-auto text-muted">Partita non in corso</div>
+            }
+        </div>
+    </div>
+
+    <div class="card shadow p-3">
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <div class="btn-group" role="group" aria-label="Periodo">
+                <button type="button" class="btn" [class.btn-dark]="scope === 'set'" [class.btn-outline-dark]="scope !== 'set'" [disabled]="!live" (click)="setScope('set')">Set in corso</button>
+                <button type="button" class="btn" [class.btn-dark]="scope === 'match'" [class.btn-outline-dark]="scope !== 'match'" (click)="setScope('match')">Partita</button>
+            </div>
+            @if (error) { <span class="text-danger ms-2">{{ error }}</span> }
+            <a class="btn btn-outline-secondary ms-auto" [routerLink]="['/match_details', matchId]">Dettagli partita</a>
+        </div>
+        <app-kpi-view [rows]="rows" [rallies]="rallies"></app-kpi-view>
+    </div>
+</div>

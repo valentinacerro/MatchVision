@@ -34,6 +34,7 @@
                         <a [routerLink]="['/match_details/', match.id]" routerLinkActive="router-link-active" class="btn btn-primary">Dettagli</a>
                         @if (match.live_state) {
                             <a [routerLink]="['/game', match.id]" class="btn btn-success ms-2">Riprendi scout</a>
+                            <a [routerLink]="['/bench', match.id]" class="btn btn-outline-secondary ms-2">Panchina</a>
                         }
                     </div>
                 </div>

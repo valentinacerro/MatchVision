@@ -11,6 +11,7 @@ import { MatchesDetailsComponent } from './pages/details/matches_details/matches
 import { TeamsDetailsComponent } from './pages/details/teams_details/teams_details.component'
 import { PlayersDetailsComponent } from './pages/details/players_details/players_details.component'
 import { ThanksComponent } from './pages/thanks/thanks'
+import { BenchComponent } from './pages/bench/bench.component'
 
 export const routes: Routes = [
   { path: '', component: DashboardComponent },
@@ -21,6 +22,8 @@ export const routes: Routes = [
   // The match id in the URL lets a reload (or another device) resume the match
   { path: 'game/:matchId', component: GameComponent, canDeactivate: [(game: GameComponent) => game.canLeave()] },
   { path: 'thanks', component: ThanksComponent },
+  // Read-only live stats for the bench, on another device
+  { path: 'bench/:matchId', component: BenchComponent },
 
   // Players
   { path: 'players', component: PlayersComponent },
