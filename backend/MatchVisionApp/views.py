@@ -4,7 +4,7 @@ from rest_framework import status
 from django.http import JsonResponse
 from django.db import IntegrityError, transaction
 
-from .models import Player, Team, Match, Set, Touch, Rally
+from .models import Player, Team, Match, Set, Touch, Rally, Event
 from .serializers import SetUpdateSerializer, MatchUpdateSerializer, PlayerSerializer, TeamSerializer, MatchSerializer, SetSerializer, TouchSerializer, EventSerializer, UserSerializer, RallySerializer
 
 import pandas as pd
@@ -209,10 +209,16 @@ def deleteSet(request, pk):
 # create new event
 @api_view(['POST'])
 def createEvent(request):
+    # A retry returns the event already saved (same client id)
+    client_id = request.data.get('client_id')
+    existing = Event.objects.filter(client_id=client_id).first() if client_id else None
+    if existing:
+        return Response(EventSerializer(existing).data, status=status.HTTP_200_OK)
     serializer = EventSerializer(data = request.data)
     if serializer.is_valid():
         serializer.save()
-        return Response(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 # delete specific event
     
@@ -425,3 +431,9 @@ def getMatchRallyStats(request, pk):
 @api_view(['GET'])
 def getSetRallyStats(request, pk):
     return Response(create_rally_table(Rally.objects.filter(set_id=pk)))
+
+
+# Events of a set (substitutions, time-outs, cards) in the order they happened
+@api_view(['GET'])
+def getSetEvents(request, pk):
+    return Response(EventSerializer(Event.objects.filter(set_id=pk), many=True).data)

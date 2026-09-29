@@ -84,7 +84,9 @@ class TouchSerializer(serializers.ModelSerializer):
 class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
-        fields = '__all__'
+        fields = ['id', 'event_type', 'set', 'team', 'details', 'home_score', 'guest_score', 'client_id', 'created_at']
+        # Duplicates are handled in the view, which returns the event already saved
+        extra_kwargs = {'client_id': {'validators': []}}
 
 
 # --- USER ---

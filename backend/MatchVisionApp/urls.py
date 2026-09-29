@@ -32,6 +32,7 @@ urlpatterns = [
     # Events
     # path('events/', views.getEvents),
     path('events/create/', views.createEvent),
+    path('sets/<int:pk>/events/', views.getSetEvents),
 
     # Touches
     path('touches/player/<int:player_id>/match/<int:match_id>/', views.getTouchesByPlayerMatch),

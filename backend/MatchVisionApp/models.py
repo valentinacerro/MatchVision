@@ -42,14 +42,24 @@ class Player(models.Model):
 
 
 class Event(models.Model):
+    """Something that happened in a set besides touches: substitution, time-out, card..."""
     event_type = models.CharField(max_length=30, verbose_name="Tipo evento")
+    set = models.ForeignKey('Set', on_delete=models.CASCADE, null=True, blank=True, related_name='events')
+    team = models.CharField(max_length=6, default='home', verbose_name="Squadra")
+    # e.g. {"out": [3], "in": [11]} for a substitution
+    details = models.JSONField(default=dict, blank=True, verbose_name="Dettagli")
+    home_score = models.PositiveIntegerField(null=True, blank=True, verbose_name="Punteggio casa")
+    guest_score = models.PositiveIntegerField(null=True, blank=True, verbose_name="Punteggio ospiti")
+    client_id = models.CharField(max_length=64, null=True, blank=True, unique=True, verbose_name="Id client")
+    created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
+        ordering = ["created_at", "id"]
         verbose_name = "Evento"
         verbose_name_plural = "Eventi"
 
     def __str__(self):
-        return f"Evento: {self.get_event_type_display()}"
+        return f"Evento: {self.event_type}"
 
 
 class Set(models.Model):
