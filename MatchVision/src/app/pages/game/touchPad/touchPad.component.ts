@@ -19,6 +19,7 @@ export class TouchPadComponent implements OnChanges {
     @Input() player: Player | null = null
     @Input() disabled: boolean = false
     @Input() isLibero: boolean = false // the libero may not serve or block
+    @Input() manualPick: number = 0    // changes when the scout taps a player: a deliberate new touch
     // Most likely next fundamental for each profile; a new object means "apply it now"
     @Input() suggestion: { completo: string; solo: string; id: number } | null = null
     @Output() touchEntered = new EventEmitter<{fundamental: string; outcome: string}>()
@@ -41,6 +42,8 @@ export class TouchPadComponent implements OnChanges {
 
     ngOnChanges(changes: SimpleChanges): void {
         if (changes['player']) this.hint = ''
+        // The scout picked a player on purpose: the next grade tap is a new touch, not a double tap
+        if (changes['manualPick'] && !changes['manualPick'].firstChange) this.lastSave = 0
         if (changes['isLibero'] && this.isLibero && this.forbidden(this.fundamental)) {
             this.fundamental = ''
             this.suggested = false

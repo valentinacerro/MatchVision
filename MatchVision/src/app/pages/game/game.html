@@ -35,10 +35,10 @@
             <div class="row col">  
             
                 <div class="manage-score d-flex justify-content-center align-items-center col">
-                    <button type="button" class="serve-toggle" [class.serving]="serving === 'home'" [disabled]="endSetClicked"
+                    <button type="button" class="serve-toggle" [class.serving]="serving === 'home'" [disabled]="endSetClicked || endingSet || locked"
                         (click)="setServing('home')" aria-label="Batte CASA">🏐</button>CASA
-                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || endingSet || resuming || !hasActiveSet" (click)="decreaseScore('home')">—</button>
-                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || endingSet || resuming || !hasActiveSet" (click)="increaseScore('home')">+</button>
+                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || endingSet || locked || !hasActiveSet" (click)="decreaseScore('home')">—</button>
+                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || endingSet || locked || !hasActiveSet" (click)="increaseScore('home')">+</button>
                 </div>
 
 
@@ -100,10 +100,10 @@
                 </div>
 
                 <div class="manage-score d-flex justify-content-center align-items-center col">
-                    <button type="button" class="serve-toggle" [class.serving]="serving === 'guests'" [disabled]="endSetClicked"
+                    <button type="button" class="serve-toggle" [class.serving]="serving === 'guests'" [disabled]="endSetClicked || endingSet || locked"
                         (click)="setServing('guests')" aria-label="Batte OSPITI">🏐</button>OSPITI
-                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || endingSet || resuming || !hasActiveSet" (click)="decreaseScore('guests')">—</button>
-                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || endingSet || resuming || !hasActiveSet" (click)="increaseScore('guests')">+</button> 
+                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || endingSet || locked || !hasActiveSet" (click)="decreaseScore('guests')">—</button>
+                    <button class="btn btn-secondary mx-1" [disabled]="endSetClicked || endingSet || locked || !hasActiveSet" (click)="increaseScore('guests')">+</button> 
                 </div>
 
             </div>
@@ -136,7 +136,8 @@
             [player]="selectedOnCourt"
             [isLibero]="selectedIsLibero"
             [suggestion]="suggestion"
-            [disabled]="endSetClicked || endingSet || resuming || !hasActiveSet"
+            [manualPick]="manualPick"
+            [disabled]="endSetClicked || endingSet || locked || !hasActiveSet"
             (touchEntered)="onTouchEntered($event)"
             (statsRequested)="openStats()">
         </app-touch-pad>
@@ -175,15 +176,15 @@
         <!-- bottom bar -->
 
         <div class="d-flex justify-content-between align-items-center bottom-bar rounded-3 shadow-lg">
-            <button (click)="openPlayersDeploymentModal()" class="btn btn-outline-light btn-lg">SCHIERA GIOCATORI</button>
-            <button (click)="openNewEventModal()" class="btn btn-outline-light btn-lg">REGISTRA EVENTO</button>
-            <button (click)="openChangePlayersModal()" class="btn btn-outline-light btn-lg">EFFETTUA UN CAMBIO</button>
-            <button (click)="doRotation()" class="btn btn-outline-light btn-lg">ROTAZIONE</button>
+            <button (click)="openPlayersDeploymentModal()" [disabled]="locked || endingSet" class="btn btn-outline-light btn-lg">SCHIERA GIOCATORI</button>
+            <button (click)="openNewEventModal()" [disabled]="locked || endingSet" class="btn btn-outline-light btn-lg">REGISTRA EVENTO</button>
+            <button (click)="openChangePlayersModal()" [disabled]="locked || endingSet" class="btn btn-outline-light btn-lg">EFFETTUA UN CAMBIO</button>
+            <button (click)="doRotation()" [disabled]="locked || endingSet" class="btn btn-outline-light btn-lg">ROTAZIONE</button>
         
-            <button (click)="togglePos()" class="btn btn-outline-light btn-lg">CAMBIO CAMPO</button>
-            <button (click)="confirmEndSet()" [disabled]="endSetClicked || endingSet || !hasActiveSet" class="btn btn-outline-light btn-lg">FINE SET</button>
-            <button (click)="startNewSet()" class="btn btn-outline-light btn-lg" [disabled]="(!endSetClicked && hasActiveSet) || allSetsPlayed || creatingSet || endingMatch">NUOVO SET</button>
-            <button [disabled]="!canEndMatch" (click)="confirmEndMatch()" class="btn btn-outline-light btn-lg">FINE MATCH</button>
+            <button (click)="togglePos()" [disabled]="locked || endingSet" class="btn btn-outline-light btn-lg">CAMBIO CAMPO</button>
+            <button (click)="confirmEndSet()" [disabled]="endSetClicked || endingSet || !hasActiveSet || locked" class="btn btn-outline-light btn-lg">FINE SET</button>
+            <button (click)="startNewSet()" class="btn btn-outline-light btn-lg" [disabled]="(!endSetClicked && hasActiveSet) || allSetsPlayed || creatingSet || endingMatch || locked">NUOVO SET</button>
+            <button [disabled]="!canEndMatch || locked" (click)="confirmEndMatch()" class="btn btn-outline-light btn-lg">FINE MATCH</button>
         </div>
 
 
