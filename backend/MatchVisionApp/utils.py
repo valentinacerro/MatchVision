@@ -212,3 +212,59 @@ def create_kpi_table(touches):
     # NaN is not valid JSON: turn missing values into None
     table = table.astype(object).where(pd.notna(table), None)
     return table.to_dict(orient='records')
+
+
+# ---------------------------------------------------------------------------
+# Rally statistics: how often the team wins the point
+#   side-out    = points won when the opponent serves (winning back the serve)
+#   break-point = points won on its own serve
+# overall and per rotation (rotation 1 = starting lineup, +1 at every side-out won)
+# ---------------------------------------------------------------------------
+
+def _share(won, total):
+    # {won, total, pct}: pct with one decimal, halves away from zero, None without rallies
+    won, total = int(won), int(total)
+    pct = float(np.floor(won * 1000 / total + 0.5) / 10) if total else None
+    return {'won': won, 'total': total, 'pct': pct}
+
+
+def create_rally_table(rallies):
+    """
+    rallies: a Rally queryset (a set or a whole match).
+    Returns {'total', 'sideout', 'breakpoint', 'rotations': [{rotation, p1, sideout, breakpoint}]}.
+    """
+    df = pd.DataFrame(list(rallies.values('serving', 'rotation', 'winner', 'p1_player__number')))
+    empty = {'total': 0, 'sideout': _share(0, 0), 'breakpoint': _share(0, 0), 'rotations': []}
+    if df.empty:
+        return empty
+
+    df['won'] = df['winner'] == 'home'
+    # The phase depends on who served: the opponent -> side-out, us -> break-point
+    df['phase'] = df['serving'].map({'guests': 'sideout', 'home': 'breakpoint'})
+
+    # Overall: won and total rallies per phase
+    overall = df.groupby('phase')['won'].agg(['sum', 'count'])
+
+    def phase_share(table, phase):
+        if phase not in table.index:
+            return _share(0, 0)
+        return _share(table.loc[phase, 'sum'], table.loc[phase, 'count'])
+
+    rotations = []
+    for rotation, group in df.groupby('rotation'):
+        by_phase = group.groupby('phase')['won'].agg(['sum', 'count'])
+        # Player in position 1 in this rotation, if it is always the same one (e.g. within a set)
+        p1 = group['p1_player__number'].dropna().unique()
+        rotations.append({
+            'rotation': int(rotation) + 1,
+            'p1': int(p1[0]) if len(p1) == 1 else None,
+            'sideout': phase_share(by_phase, 'sideout'),
+            'breakpoint': phase_share(by_phase, 'breakpoint'),
+        })
+
+    return {
+        'total': int(len(df)),
+        'sideout': phase_share(overall, 'sideout'),
+        'breakpoint': phase_share(overall, 'breakpoint'),
+        'rotations': rotations,
+    }

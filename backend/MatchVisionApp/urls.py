@@ -55,4 +55,11 @@ urlpatterns = [
     path('match_details/<int:pk>/kpi/', views.getMatchKpi),
     path('match_details/sets/<int:pk>/kpi/', views.getSetKpi),
 
+    # Rallies
+    path('rallies/create/', views.createRally),
+    path('rallies/delete/<str:client_id>/', views.deleteRally),
+    path('sets/<int:pk>/rallies/', views.getSetRallies),
+    path('match_details/<int:pk>/rally_stats/', views.getMatchRallyStats),
+    path('match_details/sets/<int:pk>/rally_stats/', views.getSetRallyStats),
+
 ]

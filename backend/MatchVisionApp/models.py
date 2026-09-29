@@ -136,7 +136,33 @@ class Touch(models.Model):
 
     def __str__(self):
         player_name = f"{self.player}" if self.player else "Sconosciuto"
-        return f"{player_name} - {self.get_fundamental_display()} ({self.get_outcome_display()})"
+        return f"{player_name} - {self.fundamental} ({self.outcome})"
+
+
+TEAM_CHOICES = [("home", "Casa"), ("guests", "Ospiti")]
+
+
+class Rally(models.Model):
+    """One point of a set: who served, in which rotation, who won. Source of side-out and break-point stats."""
+    set = models.ForeignKey('Set', on_delete=models.CASCADE, related_name='rallies')
+    number = models.PositiveIntegerField(verbose_name="Numero")
+    serving = models.CharField(max_length=6, choices=TEAM_CHOICES, verbose_name="Battuta")
+    rotation = models.PositiveSmallIntegerField(verbose_name="Rotazione")  # 0..5, side-outs won since the start of the set
+    p1_player = models.ForeignKey('Player', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                  verbose_name="Giocatore in posizione 1")
+    winner = models.CharField(max_length=6, choices=TEAM_CHOICES, verbose_name="Vincitore")
+    home_score = models.PositiveIntegerField(verbose_name="Punteggio casa dopo il punto")
+    guest_score = models.PositiveIntegerField(verbose_name="Punteggio ospiti dopo il punto")
+    cause = models.CharField(max_length=40, blank=True, default='', verbose_name="Causa")  # e.g. "Attacco ++"
+    client_id = models.CharField(max_length=64, unique=True, verbose_name="Id client")
+
+    class Meta:
+        ordering = ["set", "number", "id"]
+        verbose_name = "Rally"
+        verbose_name_plural = "Rally"
+
+    def __str__(self):
+        return f"Rally {self.number} ({self.home_score}-{self.guest_score}, vince {self.winner})"
 
 
 class User(models.Model):

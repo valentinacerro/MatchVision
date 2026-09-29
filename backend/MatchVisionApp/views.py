@@ -4,11 +4,11 @@ from rest_framework import status
 from django.http import JsonResponse
 from django.db import IntegrityError, transaction
 
-from .models import Player, Team, Match, Set, Touch
-from .serializers import SetUpdateSerializer, MatchUpdateSerializer, PlayerSerializer, TeamSerializer, MatchSerializer, SetSerializer, TouchSerializer, EventSerializer, UserSerializer
+from .models import Player, Team, Match, Set, Touch, Rally
+from .serializers import SetUpdateSerializer, MatchUpdateSerializer, PlayerSerializer, TeamSerializer, MatchSerializer, SetSerializer, TouchSerializer, EventSerializer, UserSerializer, RallySerializer
 
 import pandas as pd
-from .utils import create_table_match_stats, create_table_set_stats, create_table_set_player, create_kpi_table
+from .utils import create_table_match_stats, create_table_set_stats, create_table_set_player, create_kpi_table, create_rally_table
 
 # USER
 # create user
@@ -381,3 +381,47 @@ def getSetKpi(request, pk):
 def getSetTouches(request, pk):
     touches = Touch.objects.filter(set_id=pk).order_by('id')
     return Response(TouchSerializer(touches, many=True).data)
+
+
+# RALLIES: one per point, sent by the game screen
+@api_view(['POST'])
+def createRally(request):
+    client_id = request.data.get('client_id')
+    # A retry of a rally already saved returns it instead of creating a duplicate
+    existing = Rally.objects.filter(client_id=client_id).first() if client_id else None
+    if existing:
+        return Response(RallySerializer(existing).data, status=status.HTTP_200_OK)
+    target = Set.objects.select_related('match').filter(pk=request.data.get('set')).first()
+    if target and target.match.results:
+        return Response({"error": "Partita terminata"}, status=status.HTTP_409_CONFLICT)
+    serializer = RallySerializer(data=request.data)
+    if serializer.is_valid():
+        try:
+            with transaction.atomic():
+                serializer.save()
+        except IntegrityError:
+            existing = Rally.objects.filter(client_id=serializer.validated_data.get('client_id')).first()
+            if not existing:
+                return Response({"error": "Rally non valido"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(RallySerializer(existing).data, status=status.HTTP_200_OK)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# Undo of a point: the client knows the rally by its client id
+@api_view(['DELETE'])
+def deleteRally(request, client_id):
+    deleted, _ = Rally.objects.filter(client_id=client_id).delete()
+    return Response(status=status.HTTP_204_NO_CONTENT if deleted else status.HTTP_404_NOT_FOUND)
+
+@api_view(['GET'])
+def getSetRallies(request, pk):
+    return Response(RallySerializer(Rally.objects.filter(set_id=pk), many=True).data)
+
+# Side-out / break-point statistics
+@api_view(['GET'])
+def getMatchRallyStats(request, pk):
+    return Response(create_rally_table(Rally.objects.filter(set__match_id=pk)))
+
+@api_view(['GET'])
+def getSetRallyStats(request, pk):
+    return Response(create_rally_table(Rally.objects.filter(set_id=pk)))

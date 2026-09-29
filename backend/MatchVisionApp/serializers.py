@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Player, Team, Match, Set, Touch, Event, User
+from .models import Player, Team, Match, Set, Touch, Event, User, Rally
 
 
 # --- PLAYER ---
@@ -96,3 +96,12 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'email', 'password', 'name', 'surname', 'teams', 'matches', 'players']
+
+
+# --- RALLY ---
+class RallySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Rally
+        fields = ['id', 'set', 'number', 'serving', 'rotation', 'p1_player', 'winner', 'home_score', 'guest_score', 'cause', 'client_id']
+        # Duplicates are handled in the view, which returns the rally already saved
+        extra_kwargs = {'client_id': {'validators': []}}
