@@ -20,7 +20,12 @@ def refused_write(match, request):
         return None
     if match.results:
         return "Partita terminata"
-    writer = request.data.get('writer')
+    return foreign_writer(match, request)
+
+
+def foreign_writer(match, request):
+    """The match is controlled by another page (writer in the body, or ?writer= for DELETE)."""
+    writer = request.data.get('writer') or request.query_params.get('writer')
     owner = (match.live_state or {}).get('writer')
     if writer and owner and writer != owner:
         return "Partita aperta su un altro dispositivo"
@@ -146,6 +151,10 @@ def updateMatch(request, pk):
         # Locked row: two devices saving at the same time are handled one after the other
         match = Match.objects.select_for_update().get(pk = pk)
         data = dict(request.data)
+        data.pop('writer', None)
+        # Ending the match (results) is allowed only to the page that controls it
+        if 'results' in data and foreign_writer(match, request):
+            return Response({"error": foreign_writer(match, request)}, status=status.HTTP_409_CONFLICT)
         incoming = data.get('live_state')
         if incoming is not None:
             # A finished match cannot be reopened (e.g. by a save that arrives after FINE MATCH)
@@ -192,8 +201,9 @@ def getSets(request):
 @api_view(['POST'])
 def createSet(request):
     match = Match.objects.filter(pk = request.data.get('match')).first()
-    if match and match.results:
-        return Response({"error": "Partita terminata"}, status=status.HTTP_409_CONFLICT)
+    reason = refused_write(match, request)
+    if reason:
+        return Response({"error": reason}, status=status.HTTP_409_CONFLICT)
     serializer = SetSerializer(data = request.data)
     if serializer.is_valid():
         serializer.save()
@@ -203,7 +213,10 @@ def createSet(request):
 # update set
 @api_view(['PUT'])
 def updateSet(request, pk):
-    set = Set.objects.get(pk = pk)
+    set = Set.objects.select_related('match').get(pk = pk)
+    reason = refused_write(set.match, request)
+    if reason:
+        return Response({"error": reason}, status=status.HTTP_409_CONFLICT)
     serializer = SetUpdateSerializer(set, data = request.data, partial=True)
     if serializer.is_valid():
         serializer.save()
@@ -214,7 +227,10 @@ def updateSet(request, pk):
 @api_view(['DELETE'])
 def deleteSet(request, pk):
     try:
-        set = Set.objects.get(id = pk)
+        set = Set.objects.select_related('match').get(id = pk)
+        reason = refused_write(set.match, request)
+        if reason:
+            return Response({"error": reason}, status=status.HTTP_409_CONFLICT)
         set.delete()
         return Response({"message": "Set deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
     except Set.DoesNotExist:
@@ -307,7 +323,10 @@ def getTouchesByPlayerMatchSet(request, player_id, match_id, set_id):
 @api_view(['DELETE'])
 def deleteTouch(request, pk):
     try:
-        touch = Touch.objects.get(id=pk)
+        touch = Touch.objects.select_related('set__match').get(id=pk)
+        reason = refused_write(touch.set.match, request)
+        if reason:
+            return Response({"error": reason}, status=status.HTTP_409_CONFLICT)
         touch.delete()
         return Response({"message": "Touch deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
     except Touch.DoesNotExist:
@@ -446,6 +465,10 @@ def createRally(request):
 # Undo of a point: the client knows the rally by its client id
 @api_view(['DELETE'])
 def deleteRally(request, client_id):
+    rally = Rally.objects.select_related('set__match').filter(client_id=client_id).first()
+    reason = refused_write(rally.set.match, request) if rally else None
+    if reason:
+        return Response({"error": reason}, status=status.HTTP_409_CONFLICT)
     deleted, _ = Rally.objects.filter(client_id=client_id).delete()
     return Response(status=status.HTTP_204_NO_CONTENT if deleted else status.HTTP_404_NOT_FOUND)
 

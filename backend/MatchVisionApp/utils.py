@@ -253,13 +253,15 @@ def create_rally_table(rallies, by='rotation'):
         return _share(table.loc[phase, 'sum'], table.loc[phase, 'count'])
 
     rotations = []
-    if by == 'p1' and df['p1_player__number'].notna().all():
-        # One row per player in P1 (rotation label not meaningful across sets)
-        for p1, group in df.groupby('p1_player__number'):
+    if by == 'p1':
+        # One row per player in P1 (rotation label not meaningful across sets);
+        # rallies without a known P1 (no lineup deployed) go into one extra row
+        df['p1_key'] = df['p1_player__number'].fillna(-1)
+        for p1, group in df.groupby('p1_key'):
             by_phase = group.groupby('phase')['won'].agg(['sum', 'count'])
             rotations.append({
                 'rotation': None,
-                'p1': int(p1),
+                'p1': int(p1) if p1 >= 0 else None,
                 'sideout': phase_share(by_phase, 'sideout'),
                 'breakpoint': phase_share(by_phase, 'breakpoint'),
             })
