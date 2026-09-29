@@ -35,7 +35,7 @@ private apiUrl = API_URL;
         return this.http.post<Match>(`${this.apiUrl}/matches/create/`, match);
     }
 
-    updateMatch(id: number, payload: { results?: any[]; live_state?: any }): Observable<Match> {
+    updateMatch(id: number, payload: { results?: any[]; live_state?: any; writer?: string }): Observable<Match> {
         return this.http.put<Match>(`${this.apiUrl}/matches/update/${id}/`, payload);
     }
 

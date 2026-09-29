@@ -30,6 +30,7 @@ type TrackedTouch = Touch & { seq: number; rally: number; uncertain?: boolean }
 
 const REQUEST_TIMEOUT_MS = 15000
 const STATE_KEY = 'matchvision.live.' // + match id, local copy of the live state
+const OTHER_DEVICE = 'La partita è stata aperta su un altro dispositivo o è terminata: ricarica la pagina per riprenderla qui'
 
 // Game state before a score change, so it can be taken back
 interface Snapshot {
@@ -258,9 +259,11 @@ export class GameComponent implements OnInit, OnDestroy{
     private latestState: LiveState | null = null
     readOnlyReason: string = ''              // set when this page must not change the match any more
 
+    claiming: boolean = false // taking control of the match after a resume
+
     // Nothing can be changed while resuming or when the match is finished / taken over elsewhere
     get locked(): boolean {
-        return this.resuming || !!this.readOnlyReason
+        return this.resuming || this.claiming || !!this.readOnlyReason
     }
 
     private setReadOnly(reason: string): void {
@@ -338,19 +341,19 @@ export class GameComponent implements OnInit, OnDestroy{
             next: (res) => {
                 this.serverRev = res.live_state?.rev ?? this.serverRev + 1
                 this.clearError('snapshot')
-                onSaved?.()
+                if (!this.readOnlyReason) onSaved?.()
                 this.cdr.detectChanges()
             },
             error: (err) => {
                 if (err?.status === 409) {
                     // Another device went on with this match, or it is over: do not overwrite it
-                    this.setReadOnly('La partita è stata aggiornata da un altro dispositivo o è terminata: ricarica la pagina per riprenderla qui')
+                    this.setReadOnly(OTHER_DEVICE)
                     return
                 }
                 this.showError('snapshot', 'Stato della partita non salvato sul server: riprovo tra poco', err)
                 // Retry only if this is still the newest state and no newer save is on its way
                 this.retryTimer = setTimeout(() => {
-                    if (!this.saveTimer && this.latestState === state) this.pushState(id, state)
+                    if (!this.saveTimer && this.latestState === state) this.pushState(id, state, onSaved)
                 }, 5000)
             },
         })
@@ -477,13 +480,19 @@ export class GameComponent implements OnInit, OnDestroy{
     private finishResume(state: LiveState): void {
         this.resuming = false
         this.clearError('match')
+        // Touches not saved before the reload wait in the unsaved list (so they stay in the state
+        // even if taking control takes a while) and are sent again once this page controls the match
+        const saved = new globalThis.Set(this.touches.map(t => t.client_id))
+        this.failedTouches = (state.unsent ?? [])
+            .filter(t => !t.client_id || !saved.has(t.client_id))
+            .map(t => ({ ...t, seq: this.seqOf(state, t.client_id), rally: this.rallyOf(state, t.client_id) }))
         this.updateSuggestion()
-        this.showInfo('Partita ripresa')
-        this.cdr.detectChanges()
         // Opening the match here takes control of it: the other device can no longer write.
-        // Only then the data not saved before the reload is sent again.
         const id = this.matchId
         if (!id) return
+        this.claiming = true
+        this.showInfo('Ripresa in corso…')
+        this.cdr.detectChanges()
         const claim = this.buildState()
         this.latestState = claim
         try { localStorage.setItem(STATE_KEY + id, JSON.stringify(claim)) } catch {}
@@ -491,12 +500,10 @@ export class GameComponent implements OnInit, OnDestroy{
     }
 
     private afterClaim(state: LiveState): void {
-        // Touches not saved before the reload are sent again (their client_id prevents duplicates)
-        const saved = new globalThis.Set(this.touches.map(t => t.client_id))
-        for (const t of state.unsent ?? []) {
-            if (t.client_id && saved.has(t.client_id)) continue
-            this.sendTouch({ ...t, seq: this.seqOf(state, t.client_id), rally: this.rallyOf(state, t.client_id) })
-        }
+        this.claiming = false
+        this.showInfo('Partita ripresa')
+        // Data not saved before the reload is sent again (client ids prevent duplicates)
+        this.retryFailedTouches()
         this.unsentRallyDeletes.forEach(id => this.deleteRallyOnServer(id))
         this.unsentRallies.forEach(r => this.sendRally(r))
         this.unsentEvents.forEach(e => this.sendEvent(e))
@@ -636,7 +643,7 @@ export class GameComponent implements OnInit, OnDestroy{
             },
             error: (err) => {
                 if (err?.status === 409) {
-                    this.setReadOnly('La partita è terminata o aperta su un altro dispositivo: ricarica la pagina per riprenderla qui')
+                    this.setReadOnly(OTHER_DEVICE)
                     return
                 }
                 console.error('Errore salvataggio rally', err)
@@ -654,9 +661,13 @@ export class GameComponent implements OnInit, OnDestroy{
 
     private deleteRallyOnServer(id: string): void {
         if (!this.unsentRallyDeletes.includes(id)) this.unsentRallyDeletes = [...this.unsentRallyDeletes, id]
-        this.ralliesService.deleteRally(id).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
+        this.ralliesService.deleteRally(id, this.writer).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
             next: () => this.rallyDeleted(id),
             error: (err) => {
+                if (err?.status === 409) {
+                    this.setReadOnly(OTHER_DEVICE)
+                    return
+                }
                 // 404: not created yet, or already gone. A create sent in the last minute may still
                 // land (e.g. after a timeout): keep trying for a while, then give up
                 const recent = Date.now() - (this.rallyCreatedAt.get(id) ?? 0) < 60000
@@ -699,7 +710,7 @@ export class GameComponent implements OnInit, OnDestroy{
             },
             error: (err) => {
                 if (err?.status === 409) {
-                    this.setReadOnly('La partita è terminata o aperta su un altro dispositivo: ricarica la pagina per riprenderla qui')
+                    this.setReadOnly(OTHER_DEVICE)
                     return
                 }
                 console.error('Errore salvataggio evento', err)
@@ -1158,9 +1169,15 @@ export class GameComponent implements OnInit, OnDestroy{
     // key: one message per touch, so one success does not hide another failure
     deleteTouch(touch: TrackedTouch, onFail?: () => void, key: string = `delete-${touch.id}`): void {
         this.pendingDeletes++
-        this.touchesService.deleteTouch(touch.id).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
+        this.touchesService.deleteTouch(touch.id, this.writer).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
             next: () => this.onTouchDeleted(touch, key),
             error: (err) => {
+                if (err?.status === 409) {
+                    this.pendingDeletes--
+                    onFail?.()
+                    this.setReadOnly(OTHER_DEVICE)
+                    return
+                }
                 // 404: already deleted on the server (e.g. an earlier timed-out delete went through)
                 if (err?.status === 404) {
                     this.onTouchDeleted(touch, key)
@@ -1233,7 +1250,7 @@ export class GameComponent implements OnInit, OnDestroy{
                 const current = this.pendingTouches.find(t => t.client_id === touch.client_id) ?? touch
                 this.pendingTouches = this.pendingTouches.filter(t => t.client_id !== touch.client_id)
                 this.failedTouches = [...this.failedTouches, { ...current, uncertain: current.uncertain || err?.name === 'TimeoutError' }]
-                if (err?.status === 409) this.setReadOnly('La partita è terminata o aperta su un altro dispositivo: ricarica la pagina per riprenderla qui')
+                if (err?.status === 409) this.setReadOnly(OTHER_DEVICE)
                 this.refreshStatus()
                 this.saveState()
                 this.cdr.detectChanges()
@@ -1314,7 +1331,11 @@ export class GameComponent implements OnInit, OnDestroy{
         this.liberoFor = event.liberoFor ?? []
         // I..VI are the positions now on court: with the set under way (rotation > 0) the lineup
         // is stored so that each player shows up in the position chosen
-        const chosen: Player[] = event.startingPlayers
+        const chosen: Player[] = (event.startingPlayers as Player[]).filter(p => !this.outForMatch.includes(p.id))
+        if (chosen.length !== (event.startingPlayers as Player[]).length) {
+            this.showError('change', 'Un giocatore uscito per infortunio non può rientrare in questa partita')
+            return
+        }
         const lineup: Player[] = new Array(6)
         chosen.forEach((p, k) => lineup[(k + this.rotation) % 6] = p)
         this.starting_players = chosen.length === 6 ? lineup : chosen
@@ -1367,7 +1388,7 @@ export class GameComponent implements OnInit, OnDestroy{
         }else if (!this.creatingSet){  
             this.creatingSet = true
             this.globalService.currentSet.set(null) // no touch can go to the old set meanwhile
-            this.setsService.createSet(this.newSet).subscribe({
+            this.setsService.createSet({ ...this.newSet, writer: this.writer }).subscribe({
                 next: (res) => {
                     this.creatingSet = false
                     this.clearError('set')
@@ -1465,7 +1486,7 @@ export class GameComponent implements OnInit, OnDestroy{
             guest_score: this.score.guests
         }
         this.endingSet = true
-        this.setsService.updateSet(currentSet.id, updatedScores).subscribe({
+        this.setsService.updateSet(currentSet.id, { ...updatedScores, writer: this.writer }).subscribe({
             next: (res) => {
                 console.log("Set aggiornato con i punteggi:", res)
                 this.endingSet = false
@@ -1485,6 +1506,10 @@ export class GameComponent implements OnInit, OnDestroy{
             },
             error: (err) => {
                 this.endingSet = false
+                if (err?.status === 409) {
+                    this.setReadOnly(OTHER_DEVICE)
+                    return
+                }
                 this.showError('set', 'Punteggio del set non salvato: premi FINE SET per riprovare', err)
             }
         });
@@ -1495,7 +1520,7 @@ export class GameComponent implements OnInit, OnDestroy{
         if(!match || !match.id)
             this.showError('match', 'Nessuna partita a cui salvare i risultati')
         else
-        this.matchesService.updateMatch(match.id, { results: results, live_state: null }).subscribe({
+        this.matchesService.updateMatch(match.id, { results: results, live_state: null, writer: this.writer }).subscribe({
             next: (res) => {
                 console.log("Risultati aggiornati:", res)
                 try { localStorage.removeItem(STATE_KEY + match.id) } catch {}
@@ -1504,6 +1529,10 @@ export class GameComponent implements OnInit, OnDestroy{
             },
             error: (err) => {
                 this.endingMatch = false
+                if (err?.status === 409) {
+                    this.setReadOnly(OTHER_DEVICE)
+                    return
+                }
                 this.showError('match', 'Risultati della partita non salvati: premi FINE MATCH per riprovare', err)
             }
     })
@@ -1541,7 +1570,7 @@ export class GameComponent implements OnInit, OnDestroy{
         this.saveTimer = null
         const current = this.globalService.currentSet()
         if (!this.endSetClicked && current?.id) {
-            this.setsService.deleteSet(current.id).subscribe({
+            this.setsService.deleteSet(current.id, this.writer).subscribe({
                 next: () => this.afterEmptySetRemoved(),
                 error: (err) => {
                     if (err?.status === 404) {
@@ -1549,6 +1578,10 @@ export class GameComponent implements OnInit, OnDestroy{
                         return
                     }
                     this.endingMatch = false
+                    if (err?.status === 409) {
+                        this.setReadOnly(OTHER_DEVICE)
+                        return
+                    }
                     this.showError('match', 'Set vuoto non eliminato: premi FINE MATCH per riprovare', err)
                 }
             })

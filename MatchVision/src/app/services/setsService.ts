@@ -24,15 +24,16 @@ export class SetsService {
         return this.http.get<Set>(`${this.apiUrl}/sets/${setId}/`);
     }
 
-    createSet(set: Set): Observable<Set> {
+    // writer: the page that controls the match (the server refuses writes from another page)
+    createSet(set: Set & { writer?: string }): Observable<Set> {
         return this.http.post<Set>(`${this.apiUrl}/sets/create/`, set);
     }
 
-    updateSet(id: number, scores: {home_score: number, guest_score: number}): Observable<Set> {
+    updateSet(id: number, scores: {home_score: number, guest_score: number, writer?: string}): Observable<Set> {
         return this.http.put<Set>(`${this.apiUrl}/sets/update/${id}/`, scores);
     }
 
-    deleteSet(id: number): Observable<any> {
-        return this.http.delete(`${this.apiUrl}/sets/delete/${id}/`);
+    deleteSet(id: number, writer?: string): Observable<any> {
+        return this.http.delete(`${this.apiUrl}/sets/delete/${id}/`, { params: writer ? { writer } : {} });
     }
 }

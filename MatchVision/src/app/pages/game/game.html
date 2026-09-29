@@ -166,6 +166,7 @@
 
         <!-- Modal for players deployment -->
         <app-players-deployment-modal
+            [outForMatch]="outForMatch"
             (startingPlayersChosen)="assignPlayers($event)">
         </app-players-deployment-modal>
 

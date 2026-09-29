@@ -32,8 +32,8 @@ export class RalliesService {
     }
 
     // By client id: an undo can delete a rally whose server id the page never received
-    deleteRally(clientId: string): Observable<any> {
-        return this.http.delete(`${this.apiUrl}/rallies/delete/${clientId}/`)
+    deleteRally(clientId: string, writer?: string): Observable<any> {
+        return this.http.delete(`${this.apiUrl}/rallies/delete/${clientId}/`, { params: writer ? { writer } : {} })
     }
 
     getSetRallies(setId: number): Observable<Rally[]> {

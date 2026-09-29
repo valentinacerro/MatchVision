@@ -28,8 +28,8 @@
     <div class="card shadow p-3">
         <div class="d-flex align-items-center gap-2 mb-3">
             <div class="btn-group" role="group" aria-label="Periodo">
-                <button type="button" class="btn" [class.btn-dark]="scope === 'set'" [class.btn-outline-dark]="scope !== 'set'" [disabled]="!live" (click)="setScope('set')">Set in corso</button>
-                <button type="button" class="btn" [class.btn-dark]="scope === 'match'" [class.btn-outline-dark]="scope !== 'match'" (click)="setScope('match')">Partita</button>
+                <button type="button" class="btn" [class.btn-dark]="scope === 'set' && live" [class.btn-outline-dark]="scope !== 'set' || !live" [disabled]="!live" (click)="setScope('set')">Set in corso</button>
+                <button type="button" class="btn" [class.btn-dark]="scope === 'match' || !live" [class.btn-outline-dark]="scope !== 'match' && live" (click)="setScope('match')">Partita</button>
             </div>
             @if (error) { <span class="text-danger ms-2">{{ error }}</span> }
             <a class="btn btn-outline-secondary ms-auto" [routerLink]="['/match_details', matchId]">Dettagli partita</a>

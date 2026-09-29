@@ -1,12 +1,13 @@
 import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core'
 import { ActivatedRoute, RouterModule } from '@angular/router'
-import { forkJoin } from 'rxjs'
+import { forkJoin, timeout } from 'rxjs'
 import { Match } from '../../Models/Match'
 import { MatchesService } from '../../services/matchesService'
 import { KpiRow, RallyStats, StatsService } from '../../services/statsService'
 import { KpiViewComponent } from '../shared/kpiView/kpiView.component'
 
 const REFRESH_MS = 5000
+const REQUEST_TIMEOUT_MS = 15000 // a stalled request ends in an error and the next tick tries again
 
 // Read-only view for the bench: follows a match being scouted on another device
 @Component({
@@ -82,16 +83,16 @@ export class BenchComponent implements OnInit, OnDestroy {
     refresh(): void {
         const request = ++this.request
         this.inFlight = true
-        this.matchesService.getMatch(this.matchId).subscribe({
+        this.matchesService.getMatch(this.matchId).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
             next: (match) => {
                 if (request !== this.request) return
                 this.match = match
-                if (!match.live_state) this.scope = 'match' // over or not started: whole match
+                // Over or not started: the whole match (the chosen scope comes back when a set is live)
                 const setId = match.live_state?.setId
                 const bySet = this.scope === 'set' && setId
                 const kpi = bySet ? this.statsService.getSetKpi(setId) : this.statsService.getMatchKpi(this.matchId)
                 const rallies = bySet ? this.statsService.getSetRallyStats(setId) : this.statsService.getMatchRallyStats(this.matchId)
-                forkJoin({ rows: kpi, rallies }).subscribe({
+                forkJoin({ rows: kpi, rallies }).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
                     next: ({ rows, rallies }) => {
                         if (request !== this.request) return
                         this.rows = rows
@@ -112,6 +113,7 @@ export class BenchComponent implements OnInit, OnDestroy {
     private fail(request: number, err: any): void {
         if (request !== this.request) return
         this.inFlight = false
+        this.skipped = 0
         console.error('Errore aggiornamento panchina', err)
         this.error = 'Aggiornamento non riuscito: riprovo tra poco'
         this.cdr.detectChanges()

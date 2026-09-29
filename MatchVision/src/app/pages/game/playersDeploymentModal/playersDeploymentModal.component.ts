@@ -1,4 +1,4 @@
-import { Component, EventEmitter, inject, Output, TemplateRef, ViewChild } from '@angular/core';
+import { Component, EventEmitter, inject, Input, Output, TemplateRef, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgbModal } from '@ng-bootstrap/ng-bootstrap';
 import { Player, Role } from '../../../Models/Player';
@@ -28,6 +28,7 @@ export class PlayersDeploymentModal {
     @ViewChild('content', { static: true }) content!: TemplateRef<any>
     
     @Output() startingPlayersChosen = new EventEmitter<any>()
+    @Input() outForMatch: number[] = [] // injured players (exceptional substitution): not available
 
     startingPlayers: Player[] = []
     libero: Player | null = null
@@ -37,7 +38,7 @@ export class PlayersDeploymentModal {
 
     // Read at every use: after a resume the players arrive later than this component
     get allPlayers(): Player[] {
-        return this.globalService.currentPlayers()
+        return this.globalService.currentPlayers().filter(p => !this.outForMatch.includes(p.id))
     }
 
     // The starters, without whoever is picked as libero (a libero cannot be in the six)
@@ -97,6 +98,8 @@ export class PlayersDeploymentModal {
 
     // At most two, normally opposite in the lineup (never in the back row together)
     toggleLiberoFor(player: Player): void {
+        // Only current starters count (a starter deselected meanwhile does not block the limit)
+        this.liberoFor = this.liberoFor.filter(id => this.startingPlayers.some(p => p.id === id))
         if (this.liberoFor.includes(player.id)) this.liberoFor = this.liberoFor.filter(id => id !== player.id)
         else if (this.liberoFor.length < 2) this.liberoFor = [...this.liberoFor, player.id]
     }
