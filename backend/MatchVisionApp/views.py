@@ -125,22 +125,31 @@ def createMatch(request):
 # update match
 @api_view(['PUT'])
 def updateMatch(request, pk):
-    match = Match.objects.get(pk = pk)
-    incoming = request.data.get('live_state')
-    if incoming is not None:
-        # A finished match cannot be reopened (e.g. by a save that arrives after FINE MATCH)
-        if match.results and 'results' not in request.data:
-            return Response({"error": "Partita terminata"}, status=status.HTTP_409_CONFLICT)
-        # Each save carries a revision: an older one (another device, a stale tab) is refused
-        stored = match.live_state or {}
-        if isinstance(incoming, dict) and incoming.get('rev', 0) <= stored.get('rev', 0):
-            return Response({"error": "Stato più vecchio di quello salvato", "rev": stored.get('rev', 0)}, status=status.HTTP_409_CONFLICT)
-    # partial: the live state is saved on its own, without resending the results
-    serializer = MatchUpdateSerializer(match, data = request.data, partial = True)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    with transaction.atomic():
+        # Locked row: two devices saving at the same time are handled one after the other
+        match = Match.objects.select_for_update().get(pk = pk)
+        data = dict(request.data)
+        incoming = data.get('live_state')
+        if incoming is not None:
+            # A finished match cannot be reopened (e.g. by a save that arrives after FINE MATCH)
+            if match.results and 'results' not in data:
+                return Response({"error": "Partita terminata"}, status=status.HTTP_409_CONFLICT)
+            if isinstance(incoming, dict):
+                # Compare-and-swap on a revision owned by the server: the client sends the revision
+                # it last got back (baseRev) and its page id (writer). A device that did not see the
+                # latest save of another device is refused; the server assigns the next revision.
+                stored = match.live_state or {}
+                stored_rev = stored.get('rev', 0)
+                same_writer = bool(incoming.get('writer')) and incoming.get('writer') == stored.get('writer')
+                if incoming.get('baseRev', 0) != stored_rev and not same_writer:
+                    return Response({"error": "Partita aggiornata da un altro dispositivo", "rev": stored_rev}, status=status.HTTP_409_CONFLICT)
+                data['live_state'] = {**incoming, 'rev': stored_rev + 1}
+        # partial: the live state is saved on its own, without resending the results
+        serializer = MatchUpdateSerializer(match, data = data, partial = True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 # delete specific match
 @api_view(['DELETE'])
@@ -165,6 +174,9 @@ def getSets(request):
 # create new set
 @api_view(['POST'])
 def createSet(request):
+    match = Match.objects.filter(pk = request.data.get('match')).first()
+    if match and match.results:
+        return Response({"error": "Partita terminata"}, status=status.HTTP_409_CONFLICT)
     serializer = SetSerializer(data = request.data)
     if serializer.is_valid():
         serializer.save()
@@ -224,6 +236,10 @@ def createTouch(request):
         existing = Touch.objects.filter(client_id=client_id).first()
         if existing:
             return Response(TouchSerializer(existing).data, status=status.HTTP_200_OK)
+    # No new touches in a finished match
+    target = Set.objects.select_related('match').filter(pk = request.data.get('set')).first()
+    if target and target.match.results:
+        return Response({"error": "Partita terminata"}, status=status.HTTP_409_CONFLICT)
     serializer = TouchSerializer(data = request.data)
     if serializer.is_valid():
         try:
