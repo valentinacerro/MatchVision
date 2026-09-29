@@ -1,0 +1,67 @@
+.views {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.view-btn {
+    min-height: 2.8rem;
+    min-width: 7rem;
+    border: 2px solid #6c757d;
+    font-weight: 600;
+}
+
+.view-btn.selected {
+    background-color: #212529;
+    border-color: #212529;
+    color: white;
+}
+
+// Readable from the bench during a 30 s time-out
+.kpi-table {
+    font-size: 1.1rem;
+}
+
+.team-row td {
+    font-weight: bold;
+    border-top: 2px solid #212529;
+}
+
+.negative {
+    color: #b02a37;
+}
+
+.legend {
+    font-size: 0.85rem;
+    color: #666;
+}
+
+// Two big numbers the coach reads at a glance
+.rally-summary {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.rally-box {
+    flex: 1 1 12rem;
+    padding: 0.6rem 1rem;
+    border-radius: 10px;
+    background-color: #f1f3f5;
+    text-align: center;
+}
+
+.rally-label {
+    font-weight: 600;
+    color: #495057;
+}
+
+.rally-value {
+    font-size: 2rem;
+    font-weight: bold;
+}
+
+.rally-count {
+    font-size: 0.9rem;
+    color: #6c757d;
+}

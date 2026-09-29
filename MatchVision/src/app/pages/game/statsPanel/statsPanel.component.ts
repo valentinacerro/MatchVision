@@ -2,13 +2,14 @@ import { ChangeDetectorRef, Component, inject, Input, TemplateRef, ViewChild } f
 import { NgbModal } from '@ng-bootstrap/ng-bootstrap'
 import { forkJoin } from 'rxjs'
 import { KpiRow, RallyStats, StatsService } from '../../../services/statsService'
-import { ALL_FUNDAMENTALS } from '../touchPad/touchPad.component'
+import { KpiViewComponent } from '../../shared/kpiView/kpiView.component'
 
 // KPI of the current set or of the whole match, readable during a time-out.
 // Opens over the game, so the live state is kept.
 @Component({
     selector: 'app-stats-panel',
     standalone: true,
+    imports: [KpiViewComponent],
     templateUrl: './statsPanel.component.html',
     styleUrls: ['./statsPanel.component.scss']
 })
@@ -23,13 +24,9 @@ export class StatsPanelComponent {
     @Input() setId: number | null = null
     @Input() setLabel: string = 'Set'
 
-    readonly grades: (keyof KpiRow)[] = ['++', '+', '!', '—', '— —']
-
     scope: 'set' | 'match' = 'set'
     rows: KpiRow[] = []
     rallies: RallyStats | null = null
-    fundamental = 'Ricezione' // or ROTATIONS for the side-out / break-point table
-    readonly ROTATIONS = 'Rotazioni'
     loading = false
     error = ''
     private request = 0 // only the latest answer is shown
@@ -64,8 +61,6 @@ export class StatsPanelComponent {
                 this.rows = rows
                 this.rallies = rallies
                 this.loading = false
-                const available = this.availableFundamentals
-                if (this.fundamental !== this.ROTATIONS && available.length > 0 && !available.includes(this.fundamental)) this.fundamental = available[0]
                 this.cdr.detectChanges()
             },
             error: (err) => {
@@ -76,13 +71,5 @@ export class StatsPanelComponent {
                 this.cdr.detectChanges()
             }
         })
-    }
-
-    get availableFundamentals(): string[] {
-        return ALL_FUNDAMENTALS.filter(f => this.rows.some(r => r.fundamental === f))
-    }
-
-    get visibleRows(): KpiRow[] {
-        return this.rows.filter(r => r.fundamental === this.fundamental)
     }
 }

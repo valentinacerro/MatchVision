@@ -1,18 +1,20 @@
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core'
 import { ActivatedRoute, RouterModule } from '@angular/router'
+import { forkJoin } from 'rxjs'
 import { Match } from '../../../Models/Match'
 import { Team } from '../../../Models/Team'
 import { Set } from '../../../Models/Set'
 import { MatchesService } from '../../../services/matchesService'
-import { Player } from '../../../Models/Player'
 import { GlobalService } from '../../../services/globalService'
-import { StatsService } from '../../../services/statsService'
+import { KpiRow, RallyStats, StatsService } from '../../../services/statsService'
+import { KpiViewComponent } from '../../shared/kpiView/kpiView.component'
 
 @Component({
     selector: 'app-matches_details',
     standalone: true,
     imports: [
         RouterModule,
+        KpiViewComponent,
     ],
     templateUrl: './matches_details.component.html',
     styleUrls: ['./matches_details.component.scss']
@@ -24,22 +26,15 @@ export class MatchesDetailsComponent implements OnInit{
     match: Match | null =  null
     team!: Team
     sets!: Set[]
-    players!: Player[]
     id!: number
 
-    df_match: any
-    df_sets: any[] = []
-    df_set_players: any[][] = [] // df list per the chosen player
-
-    df_match_text: string = ''
-    df_sets_text: string[] = []
-    df_set_players_text: string[][] = []
-
-
-    
-  
-    activeTab: 'match' | 'players' = 'match'
-
+    // Statistics: the whole match or one set
+    scope: 'match' | number = 'match'
+    rows: KpiRow[] = []
+    rallies: RallyStats | null = null
+    statsLoading = false
+    statsError = ''
+    private request = 0
 
     constructor(private route: ActivatedRoute,
         private matchesService: MatchesService, 
@@ -50,7 +45,6 @@ export class MatchesDetailsComponent implements OnInit{
   
     ngOnInit(): void {
         this.sets = []
-        this.players = []
 
         this.id = Number(this.route.snapshot.paramMap.get('id'))
         
@@ -63,19 +57,7 @@ export class MatchesDetailsComponent implements OnInit{
                 this.match = res
                 this.loadSets(res.id)
                 this.loadTeam(res.id)
-
-                // for CSV
-                this.loadMatchStats(res.id)
-                // for the table
-                this.statsService.getMatchStats(res.id).subscribe({
-                    next: (df) => {
-                        this.df_match = df
-                        console.log("Match stats caricate correttamente")
-                        this.cdr.detectChanges()
-                    }, 
-                    error: (err) => console.error("Errore caricamento statistiche match", err)
-                })
-                
+                this.loadStats()
                 this.cdr.detectChanges()
             },
             error: (err) => console.error('Errore caricamento dettagli match', err)
@@ -96,25 +78,9 @@ export class MatchesDetailsComponent implements OnInit{
         this.matchesService.getMatchSets(id).subscribe({
             next: (res) => {
                 this.sets = res
-                this.loadSetStats()
-                this.loadMatchPlayers()
-                this.loadSetPlayerStats()
-
                 this.cdr.detectChanges()
             },
             error: (err) => console.error('Errore caricamento set', err)
-        })
-    }
-
-    
-    loadMatchPlayers(): void {
-        this.sets.forEach((set) => {
-            if(set.players)
-                set.players.forEach((player) => {
-                    if(!this.players.some(p => p.id === player.id)) {
-                        this.players.push(player)
-                    }
-                })
         })
     }
 
@@ -126,81 +92,64 @@ export class MatchesDetailsComponent implements OnInit{
         return results
     }
 
-    getColumns(data: any[] | null | undefined): string[] {
-        if (!data || data.length === 0) {
-            return []
+    setScope(scope: 'match' | number): void {
+        this.scope = scope
+        this.loadStats()
+    }
+
+    loadStats(): void {
+        const request = ++this.request
+        this.statsLoading = true
+        this.statsError = ''
+        const kpi = this.scope === 'match' ? this.statsService.getMatchKpi(this.id) : this.statsService.getSetKpi(this.scope)
+        const rallies = this.scope === 'match' ? this.statsService.getMatchRallyStats(this.id) : this.statsService.getSetRallyStats(this.scope)
+        forkJoin({ rows: kpi, rallies }).subscribe({
+            next: ({ rows, rallies }) => {
+                if (request !== this.request) return
+                this.rows = rows
+                this.rallies = rallies
+                this.statsLoading = false
+                this.cdr.detectChanges()
+            },
+            error: (err) => {
+                if (request !== this.request) return
+                console.error('Errore caricamento statistiche', err)
+                this.statsLoading = false
+                this.statsError = 'Statistiche non caricate: riprova'
+                this.cdr.detectChanges()
+            }
+        })
+    }
+
+    get scopeLabel(): string {
+        if (this.scope === 'match') return 'partita'
+        const set = this.sets.find(s => s.id === this.scope)
+        return set ? `set-${set.number}` : 'set'
+    }
+
+    // CSV with numbers (';' separator, opens in Excel with Italian settings), downloaded as a file
+    exportCSV(): void {
+        const header = ['Fondamentale', 'Numero', 'Giocatore', 'Tot', '++', '+', '!', '—', '— —', 'Positività %', 'Efficienza %', 'Errori %']
+        const lines = [header.join(';')]
+        for (const r of this.rows) {
+            lines.push([r.fundamental, r.number ?? '', r.player, r.tot, r['++'], r['+'], r['!'], r['—'], r['— —'], r.positivita, r.efficienza, r.errori]
+                .map(v => String(v ?? '').replace('.', ',')).join(';'))
         }
-        return Object.keys(data[0] ?? {})
+        if (this.rallies?.total) {
+            lines.push('')
+            lines.push(['Rotazione', 'In P1', 'Side-out vinti', 'Side-out totali', 'Side-out %', 'Break-point vinti', 'Break-point totali', 'Break-point %'].join(';'))
+            const row = (label: string, p1: any, so: any, bp: any) =>
+                [label, p1 ?? '', so.won, so.total, so.pct ?? '', bp.won, bp.total, bp.pct ?? ''].map(v => String(v).replace('.', ',')).join(';')
+            lines.push(row('Totale', '', this.rallies.sideout, this.rallies.breakpoint))
+            for (const r of this.rallies.rotations) lines.push(row(`R${r.rotation}`, r.p1 !== null ? `#${r.p1}` : '', r.sideout, r.breakpoint))
+        }
+        // BOM so Excel reads the accents correctly
+        const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${(this.match?.name ?? 'partita').replace(/[^\w-]+/g, '_')}_${this.scopeLabel}.csv`
+        a.click()
+        URL.revokeObjectURL(url)
     }
-
-
-
-
-
-
-
-
-    // Creating CSVs
-    loadMatchStats(matchId: number) {
-        this.statsService.getMatchStats(matchId).subscribe(data => {
-            this.df_match = data
-            this.df_match_text = this.generateCSV(data)
-            this.cdr.detectChanges()
-        })
-    }
-    
-    loadSetStats() {
-        this.sets.forEach((s, index) => {
-            this.statsService.getSetsStats(s.id).subscribe({
-                next: (data) => {
-                    this.df_sets[index] = data
-                    this.df_sets_text[index] = this.generateCSV(data)
-                    this.cdr.detectChanges()
-                },
-                error: (err) => console.error('Errore caricamento setStats', err)
-            })
-            this.cdr.detectChanges()
-        })
-        console.log(this.df_sets_text)
-    }
-    
-    loadSetPlayerStats() {
-        this.players.forEach((p, pIndex) => {
-            if(!this.df_set_players[pIndex])
-                this.df_set_players[pIndex] = []
-            if(!this.df_set_players_text[pIndex])
-                this.df_set_players_text[pIndex] = []
-
-            this.sets.forEach((s, sIndex) => {
-                this.statsService.getSetPlayerStats(s.id, p).subscribe({
-                    next: (df) => {
-                        this.df_set_players[pIndex][sIndex] = df
-                        this.df_set_players_text[pIndex][sIndex] = this.generateCSV(df)
-                        this.cdr.detectChanges()
-                    },
-                    error: (err) => console.error('Errore caricamento setPlayersStats', err)
-                })
-            })
-        })
-        this.cdr.detectChanges()
-    }
-    
-    
-    generateCSV(df: any) {
-        if(df[0]){ 
-            const cols = Object.keys(df[0])
-            const header = cols.join(';')
-            const rows = df.map((r: any) => cols.map(c => r[c] ?? '').join(';'))
-            
-            return [header, ...rows].join('\n')
-        } else {return ''}
-    }
-
-
-    copyCSV(text: string) {
-        if (!text) return
-        navigator.clipboard.writeText(text)
-    }
-
-
 }
