@@ -9,13 +9,15 @@
 
 <div class="player-selection-section mb-4">
         <h5>Seleziona i 6 giocatori titolari:</h5>
+        <p class="text-muted small mb-2">L'ordine di selezione è la posizione in campo: I (battuta), II, III, IV, V, VI</p>
         <div class="d-flex flex-wrap gap-2">
-            @for(player of allPlayers; track player.id){
+            @for(player of availablePlayersForStart; track player.id){
                 <button class="btn player-btn"
                     [class.btn-dark]="isStartingPlayerSelected(player)"
                     [class.btn-outline-primary]="!isStartingPlayerSelected(player)"
                     [disabled]="startingPlayers.length >= 6 && !isStartingPlayerSelected(player)"
                     (click)="toggleStartingPlayer(player)">
+                    @if (positionOf(player)) { <span class="badge bg-warning text-dark me-1">{{ positionOf(player) }}</span> }
                     {{ player.number }} | {{ player.name }} {{ player.surname }}
                 </button>
             }

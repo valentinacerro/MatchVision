@@ -1,4 +1,4 @@
-import { Component, EventEmitter, inject, OnInit, Output, TemplateRef, ViewChild } from '@angular/core';
+import { Component, EventEmitter, inject, Output, TemplateRef, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgbModal } from '@ng-bootstrap/ng-bootstrap';
 import { Player } from '../../../Models/Player';
@@ -14,7 +14,7 @@ import { GlobalService } from '../../../services/globalService';
     styleUrls: ['./playersDeploymentModal.component.scss']
 })
 
-export class PlayersDeploymentModal implements OnInit {
+export class PlayersDeploymentModal {
     
     constructor(private globalService: GlobalService) {}
    
@@ -24,14 +24,25 @@ export class PlayersDeploymentModal implements OnInit {
     
     @Output() startingPlayersChosen = new EventEmitter<any>()
 
-    allPlayers: Player[] = []
     startingPlayers: Player[] = []
     libero: Player | null = null
     benchLibero: Player | null = null
     benchPlayers: Player[] = []
 
-    ngOnInit(): void {
-        this.allPlayers = this.globalService.currentPlayers()
+    // Read at every use: after a resume the players arrive later than this component
+    get allPlayers(): Player[] {
+        return this.globalService.currentPlayers()
+    }
+
+    // The starters, without whoever is picked as libero (a libero cannot be in the six)
+    get availablePlayersForStart(): Player[] {
+        return this.allPlayers.filter(p => !this.isLiberoSelected(p) && !this.isBenchLiberoSelected(p))
+    }
+
+    // Position of a starter: the tap order becomes I (server), II, ... VI
+    positionOf(player: Player): string {
+        const i = this.startingPlayers.findIndex(p => p.id === player.id)
+        return i < 0 ? '' : ['I', 'II', 'III', 'IV', 'V', 'VI'][i]
     }
 
     open() {
@@ -62,6 +73,7 @@ export class PlayersDeploymentModal implements OnInit {
     }
 
     toggleLibero(player: Player): void {
+        if (this.isStartingPlayerSelected(player)) return
         if (this.libero && this.libero.id === player.id) {
             this.libero = null
         } else {
@@ -70,6 +82,7 @@ export class PlayersDeploymentModal implements OnInit {
     }
 
     toggleBenchLibero(player: Player): void {
+        if (this.isStartingPlayerSelected(player)) return
         if (this.benchLibero && this.benchLibero.id === player.id) {
             this.benchLibero = null
         } else {
