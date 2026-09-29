@@ -126,6 +126,15 @@ def createMatch(request):
 @api_view(['PUT'])
 def updateMatch(request, pk):
     match = Match.objects.get(pk = pk)
+    incoming = request.data.get('live_state')
+    if incoming is not None:
+        # A finished match cannot be reopened (e.g. by a save that arrives after FINE MATCH)
+        if match.results and 'results' not in request.data:
+            return Response({"error": "Partita terminata"}, status=status.HTTP_409_CONFLICT)
+        # Each save carries a revision: an older one (another device, a stale tab) is refused
+        stored = match.live_state or {}
+        if isinstance(incoming, dict) and incoming.get('rev', 0) <= stored.get('rev', 0):
+            return Response({"error": "Stato più vecchio di quello salvato", "rev": stored.get('rev', 0)}, status=status.HTTP_409_CONFLICT)
     # partial: the live state is saved on its own, without resending the results
     serializer = MatchUpdateSerializer(match, data = request.data, partial = True)
     if serializer.is_valid():
