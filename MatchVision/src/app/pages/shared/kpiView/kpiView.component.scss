@@ -77,3 +77,19 @@
     font-weight: 600;
     border-top: 2px solid #dee2e6;
 }
+
+// Box score: many columns, readable at a glance
+.box-table {
+    font-size: 1rem;
+    white-space: nowrap;
+
+    .group-head th {
+        border-bottom: none;
+        font-size: 0.85rem;
+        color: #555;
+    }
+
+    .strong {
+        font-weight: 700;
+    }
+}

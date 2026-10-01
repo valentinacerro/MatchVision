@@ -8,6 +8,7 @@ import { MatchesService } from '../../../services/matchesService'
 import { GlobalService } from '../../../services/globalService'
 import { KpiRow, RallyStats, StatsService } from '../../../services/statsService'
 import { KpiViewComponent, pointsView } from '../../shared/kpiView/kpiView.component'
+import { boxScore } from '../../shared/kpiView/boxScore'
 
 @Component({
     selector: 'app-matches_details',
@@ -140,7 +141,17 @@ export class MatchesDetailsComponent implements OnInit{
     exportCSV(): void {
         const header = ['Fondamentale', 'Numero', 'Giocatore', 'Tot', '++', '+', '!', '—', '— —', 'Positività %', 'Efficienza %', 'Errori %']
         const label = (h: string) => '"' + h.replace(/"/g, '""') + '"'
-        const lines = [header.map(label).join(';')]
+        // Box score first, as in the match report
+        const lines = [['Numero', 'Giocatore', 'Punti', 'Errori', 'Saldo', 'Battute', 'Ace', 'Errori battuta',
+            'Ricezioni', 'Media ricezione 0-3', 'Ricezione positiva %', 'Ricezione perfetta %',
+            'Attacchi', 'Kill', 'Errori attacco', 'Kill %', 'Hit %', 'Muri punto'].map(label).join(';')]
+        for (const r of boxScore(this.rows)) {
+            lines.push([r.number, r.player, r.points, r.errors, r.balance, r.serve.tot, r.serve.aces, r.serve.errors,
+                r.reception.tot, r.reception.avg, r.reception.positive, r.reception.perfect,
+                r.attack.tot, r.attack.kills, r.attack.errors, r.attack.killPct, r.attack.hitPct, r.blocks].map(v => this.cell(v)).join(';'))
+        }
+        lines.push('')
+        lines.push(header.map(label).join(';'))
         for (const r of this.rows) {
             lines.push([r.fundamental, r.number, r.player, r.tot, r['++'], r['+'], r['!'], r['—'], r['— —'], r.positivita, r.efficienza, r.errori]
                 .map(v => this.cell(v)).join(';'))

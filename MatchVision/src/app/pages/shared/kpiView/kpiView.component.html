@@ -26,6 +26,9 @@
     }
 
     <div class="views mb-3">
+        @if (rows.length > 0) {
+            <button type="button" class="btn view-btn" [class.selected]="view === BOX" (click)="view = BOX">{{ BOX }}</button>
+        }
         @for (f of availableFundamentals; track f) {
             <button type="button" class="btn view-btn" [class.selected]="view === f" (click)="view = f">{{ f }}</button>
         }
@@ -38,7 +41,46 @@
     </div>
 
     <div class="table-responsive">
-        @if (view === POINTS && rallies) {
+        @if (view === BOX) {
+            <!-- Same columns as the DataVolley match report -->
+            <table class="table table-sm align-middle text-center kpi-table box-table">
+                <thead>
+                    <tr class="group-head">
+                        <th colspan="2"></th>
+                        <th colspan="3">Punti</th>
+                        <th colspan="3">Battuta</th>
+                        <th colspan="4">Ricezione</th>
+                        <th colspan="5">Attacco</th>
+                        <th>Muro</th>
+                    </tr>
+                    <tr>
+                        <th>#</th><th class="text-start">Giocatore</th>
+                        <th>Tot</th><th>Err</th><th>Saldo</th>
+                        <th>Tot</th><th>Ace</th><th>Err</th>
+                        <th>Tot</th><th>Media</th><th>Pos%</th><th>Prf%</th>
+                        <th>Tot</th><th>Kill</th><th>Err</th><th>Kill%</th><th>Hit%</th>
+                        <th>Pt</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (r of box; track r.key) {
+                        <tr [class.team-row]="r.team">
+                            <td>{{ r.number ?? '' }}</td>
+                            <td class="text-start">{{ r.player }}</td>
+                            <td class="strong">{{ r.points }}</td><td>{{ r.errors }}</td>
+                            <td [class.negative]="r.balance < 0">{{ r.balance > 0 ? '+' + r.balance : r.balance }}</td>
+                            <td>{{ r.serve.tot || '' }}</td><td>{{ r.serve.tot ? r.serve.aces : '' }}</td><td>{{ r.serve.tot ? r.serve.errors : '' }}</td>
+                            <td>{{ r.reception.tot || '' }}</td><td>{{ r.reception.tot ? num(r.reception.avg) : '' }}</td>
+                            <td>{{ r.reception.tot ? pct(r.reception.positive) : '' }}</td><td>{{ r.reception.tot ? pct(r.reception.perfect) : '' }}</td>
+                            <td>{{ r.attack.tot || '' }}</td><td>{{ r.attack.tot ? r.attack.kills : '' }}</td><td>{{ r.attack.tot ? r.attack.errors : '' }}</td>
+                            <td>{{ r.attack.tot ? pct(r.attack.killPct) : '' }}</td>
+                            <td [class.negative]="(r.attack.hitPct ?? 0) < 0">{{ r.attack.tot ? pct(r.attack.hitPct) : '' }}</td>
+                            <td>{{ r.blocks || '' }}</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        } @else if (view === POINTS && rallies) {
             <div class="points-view">
                 @for (t of points; track t.team) {
                     <table class="table table-sm align-middle kpi-table points-table">
@@ -107,8 +149,17 @@
         }
     </div>
 }
+<!-- Only the formulas of the view on screen -->
 <p class="legend mb-0">
-    Positività = (++ + +) / tot · Efficienza = (++ − — —) / tot · Errori = — — / tot ·
-    Side-out = punti vinti sul servizio avversario · Break-point = punti vinti sul proprio servizio ·
-    Punti regalati = punti nati da errori e cartellini dell'altra squadra
+    @if (view === BOX) {
+        Punti = kill + ace + muri · Saldo = punti − errori (tutti i fondamentali) ·
+        Media ricezione 0-3: ++ 3, + 2, ! 1,5, — 1, — — 0 (come DataVolley e Hudl) ·
+        Pos% = (++ + +) / tot · Prf% = ++ / tot · Kill% = kill / tentativi · Hit% = (kill − errori) / tentativi
+    } @else if (view === POINTS) {
+        Punti regalati = punti nati da errori e cartellini dell'altra squadra · Non specificati = "+" senza motivo
+    } @else if (view === ROTATIONS) {
+        Side-out = punti vinti sul servizio avversario · Break-point = punti vinti sul proprio servizio
+    } @else {
+        Positività = (++ + +) / tot · Efficienza = (++ − — —) / tot · Errori = — — / tot
+    }
 </p>

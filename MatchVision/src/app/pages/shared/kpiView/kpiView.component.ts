@@ -1,10 +1,12 @@
 import { Component, Input, OnChanges } from '@angular/core'
 import { KpiRow, RallyStats } from '../../../services/statsService'
 import { POINT_REASONS, Team } from '../../game/rallyEngine'
+import { BoxRow, boxScore } from './boxScore'
 
 export const FUNDAMENTALS_IN_PLAY_ORDER = ['Battuta', 'Ricezione', 'Alzata', 'Attacco', 'Muro', 'Difesa']
 const ROTATIONS = 'Rotazioni'
 const POINTS = 'Punti'
+const BOX = 'Box score'
 
 export interface PointGroup { label: string; total: number; items: { label: string; count: number }[] }
 export interface TeamPointsView { team: Team; label: string; total: number; groups: PointGroup[]; unspecified: number }
@@ -44,16 +46,25 @@ export class KpiViewComponent implements OnChanges {
     readonly grades: (keyof KpiRow)[] = ['++', '+', '!', '—', '— —']
     readonly ROTATIONS = ROTATIONS
     readonly POINTS = POINTS
-    view = 'Ricezione' // a fundamental, or ROTATIONS
+    readonly BOX = BOX
+    view = BOX // the box score, a fundamental, POINTS or ROTATIONS
 
     ngOnChanges(): void {
         // Keep the chosen view if it still has data, otherwise show the first one available
-        const available = [...this.availableFundamentals, ...(this.rallies?.total ? [POINTS] : []), ...(this.rallies?.rotations?.length ? [ROTATIONS] : [])]
+        const available = [...(this.rows.length ? [BOX] : []), ...this.availableFundamentals, ...(this.rallies?.total ? [POINTS] : []), ...(this.rallies?.rotations?.length ? [ROTATIONS] : [])]
         if (available.length > 0 && !available.includes(this.view)) this.view = available[0]
     }
 
     get availableFundamentals(): string[] {
         return FUNDAMENTALS_IN_PLAY_ORDER.filter(f => this.rows.some(r => r.fundamental === f))
+    }
+
+    get box(): BoxRow[] {
+        return boxScore(this.rows)
+    }
+
+    num(value: number | null): string {
+        return value === null ? '–' : value.toFixed(2).replace('.', ',')
     }
 
     get points(): TeamPointsView[] {
