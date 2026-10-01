@@ -42,6 +42,18 @@ export interface RallyStats {
     points?: { home: TeamPoints; guests: TeamPoints }
 }
 
+// A serve or an attack with its DataVolley zones (see the Touch model on the server)
+export interface TouchMapEntry {
+    player_id: number | null
+    player__number: number | null
+    fundamental: string
+    outcome: string
+    start_zone: number | null
+    end_zone: number | null
+    end_x: number | null
+    end_y: number | null
+}
+
 @Injectable({
     providedIn: 'root'
 })
@@ -62,6 +74,14 @@ export class StatsService {
 
     getSetPlayerStats(setId: number, player: Player): Observable<any> {
         return this.http.get<any>(`${this.apiUrl}/match_details/sets/${setId}/player/${player.id}/stats/`);
+    }
+
+    getMatchTouchMap(matchId: number): Observable<TouchMapEntry[]> {
+        return this.http.get<TouchMapEntry[]>(`${this.apiUrl}/match_details/${matchId}/touch_map/`)
+    }
+
+    getSetTouchMap(setId: number): Observable<TouchMapEntry[]> {
+        return this.http.get<TouchMapEntry[]>(`${this.apiUrl}/match_details/sets/${setId}/touch_map/`)
     }
 
     getMatchKpi(matchId: number): Observable<KpiRow[]> {

@@ -3,7 +3,7 @@ import { ActivatedRoute, RouterModule } from '@angular/router'
 import { forkJoin, timeout } from 'rxjs'
 import { Match } from '../../Models/Match'
 import { MatchesService } from '../../services/matchesService'
-import { KpiRow, RallyStats, StatsService } from '../../services/statsService'
+import { KpiRow, RallyStats, StatsService, TouchMapEntry } from '../../services/statsService'
 import { KpiViewComponent } from '../shared/kpiView/kpiView.component'
 
 const REFRESH_MS = 5000
@@ -24,6 +24,7 @@ export class BenchComponent implements OnInit, OnDestroy {
     scope: 'set' | 'match' = 'set'
     rows: KpiRow[] = []
     rallies: RallyStats | null = null
+    map: TouchMapEntry[] = []
     updatedAt: Date | null = null
     error = ''
     private timer: any = null
@@ -92,11 +93,13 @@ export class BenchComponent implements OnInit, OnDestroy {
                 const bySet = this.scope === 'set' && setId
                 const kpi = bySet ? this.statsService.getSetKpi(setId) : this.statsService.getMatchKpi(this.matchId)
                 const rallies = bySet ? this.statsService.getSetRallyStats(setId) : this.statsService.getMatchRallyStats(this.matchId)
-                forkJoin({ rows: kpi, rallies }).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
-                    next: ({ rows, rallies }) => {
+                const map = bySet ? this.statsService.getSetTouchMap(setId) : this.statsService.getMatchTouchMap(this.matchId)
+                forkJoin({ rows: kpi, rallies, map }).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
+                    next: ({ rows, rallies, map }) => {
                         if (request !== this.request) return
                         this.rows = rows
                         this.rallies = rallies
+                        this.map = map
                         this.updatedAt = new Date()
                         this.error = ''
                         this.inFlight = false

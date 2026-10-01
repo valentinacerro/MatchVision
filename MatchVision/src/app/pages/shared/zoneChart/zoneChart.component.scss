@@ -1,0 +1,54 @@
+.zone-chart {
+    display: block;
+    width: 100%;
+    max-width: 20rem;
+    height: auto;
+}
+
+.cell.target { fill: #fd7e14; }
+.cell.own { fill: #0d6efd; }
+
+.court {
+    fill: none;
+    stroke: #212529;
+    stroke-width: 3;
+}
+
+.attack-line {
+    stroke: #212529;
+    stroke-width: 1.5;
+    stroke-dasharray: 6 4;
+}
+
+.net {
+    stroke: #212529;
+    stroke-width: 6;
+}
+
+.zone-number {
+    font-size: 13px;
+    fill: #6c757d;
+}
+
+.count {
+    font-size: 20px;
+    font-weight: 700;
+    text-anchor: end; // top-right corner of the zone: the dots are mostly elsewhere
+    fill: #212529;
+}
+
+.share {
+    font-size: 13px;
+    text-anchor: end;
+    fill: #495057;
+}
+
+.dot {
+    stroke: white;
+    stroke-width: 2;
+}
+
+.path {
+    stroke-width: 2;
+    stroke-opacity: 0.35;
+}

@@ -88,7 +88,7 @@
         } @else if (statsError) {
             <div class="alert alert-danger mb-0">{{ statsError }}</div>
         } @else {
-            <app-kpi-view [rows]="rows" [rallies]="rallies"></app-kpi-view>
+            <app-kpi-view [rows]="rows" [rallies]="rallies" [map]="map"></app-kpi-view>
         }
     </div>
 

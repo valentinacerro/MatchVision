@@ -22,6 +22,11 @@ export class Touch {
         public fundamental: FundamentalType | string,
         public outcome: TouchResult | string,
         public player: number,
-        public client_id?: string // same id on a retry, so the server does not save it twice
+        public client_id?: string, // same id on a retry, so the server does not save it twice
+        // DataVolley zones (1-9) and the exact end point in the other half (0-1, seen by the team there)
+        public start_zone?: number | null,
+        public end_zone?: number | null,
+        public end_x?: number | null,
+        public end_y?: number | null
     ) {}
 }

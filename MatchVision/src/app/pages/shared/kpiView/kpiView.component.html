@@ -32,6 +32,9 @@
         @for (f of availableFundamentals; track f) {
             <button type="button" class="btn view-btn" [class.selected]="view === f" (click)="view = f">{{ f }}</button>
         }
+        @if (hasMap) {
+            <button type="button" class="btn view-btn" [class.selected]="view === ZONES" (click)="view = ZONES">{{ ZONES }}</button>
+        }
         @if (rallies?.total) {
             <button type="button" class="btn view-btn" [class.selected]="view === POINTS" (click)="view = POINTS">{{ POINTS }}</button>
         }
@@ -80,6 +83,56 @@
                     }
                 </tbody>
             </table>
+        } @else if (view === ZONES) {
+            <div class="zones-controls mb-3">
+                <div class="btn-group" role="group" aria-label="Fondamentale">
+                    <button type="button" class="btn" [class.btn-dark]="zoneFundamental === 'Battuta'" [class.btn-outline-dark]="zoneFundamental !== 'Battuta'"
+                        (click)="setZoneFundamental('Battuta')">Battuta</button>
+                    <button type="button" class="btn" [class.btn-dark]="zoneFundamental === 'Attacco'" [class.btn-outline-dark]="zoneFundamental !== 'Attacco'"
+                        (click)="setZoneFundamental('Attacco')">Attacco</button>
+                </div>
+                <select class="form-select zones-player" aria-label="Giocatore" (change)="setZonePlayer($any($event.target).value)">
+                    <option value="" [selected]="zonePlayer === null">Tutta la squadra</option>
+                    @for (p of zonePlayers; track p.id) {
+                        <option [value]="p.id" [selected]="zonePlayer === p.id">{{ p.label }}</option>
+                    }
+                </select>
+            </div>
+            @if (zone; as z) {
+                @if (z.total === 0) {
+                    <div class="text-muted">Nessun{{ zoneFundamental === 'Battuta' ? 'a battuta' : ' attacco' }} registrat{{ zoneFundamental === 'Battuta' ? 'a' : 'o' }}</div>
+                } @else {
+                    <div class="zones-body">
+                        <app-zone-chart [stats]="z" [attack]="zoneFundamental === 'Attacco'"></app-zone-chart>
+                        <div class="zones-side">
+                            <p class="mb-2">
+                                <strong>{{ z.withEnd }}</strong> su {{ z.total }} con la zona di arrivo
+                                @if (z.withEnd < z.total) { <span class="text-muted">(le altre non sono nel grafico in alto)</span> }
+                            </p>
+                            <p class="dots-legend mb-3">
+                                <span class="dot win"></span> {{ zoneFundamental === 'Battuta' ? 'ace' : 'kill' }}
+                                <span class="dot err"></span> errore <span class="dot other"></span> altro
+                            </p>
+                            @if (zoneFundamental === 'Attacco' && z.starts.length) {
+                                <!-- Where the attacks started: the setter's distribution -->
+                                <h6>Distribuzione per zona di partenza</h6>
+                                <table class="table table-sm align-middle text-center">
+                                    <thead><tr><th>Zona</th><th>Tot</th><th>%</th><th>Kill</th><th>Err</th><th>Kill%</th><th>Hit%</th></tr></thead>
+                                    <tbody>
+                                        @for (s of z.starts; track s.zone) {
+                                            <tr>
+                                                <td>{{ s.zone }}</td><td>{{ s.tot }}</td><td>{{ pct(s.share) }}</td>
+                                                <td>{{ s.kills }}</td><td>{{ s.errors }}</td><td>{{ pct(s.killPct) }}</td>
+                                                <td [class.negative]="(s.hitPct ?? 0) < 0">{{ pct(s.hitPct) }}</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            }
+                        </div>
+                    </div>
+                }
+            }
         } @else if (view === POINTS && rallies) {
             <div class="points-view">
                 @for (t of points; track t.team) {
@@ -155,6 +208,9 @@
         Punti = kill + ace + muri · Saldo = punti − errori (tutti i fondamentali) ·
         Media ricezione 0-3: ++ 3, + 2, ! 1,5, — 1, — — 0 (come DataVolley e Hudl) ·
         Pos% = (++ + +) / tot · Prf% = ++ / tot · Kill% = kill / tentativi · Hit% = (kill − errori) / tentativi
+    } @else if (view === ZONES) {
+        Zone come in DataVolley (3 x 3 m): 4 3 2 a rete, 7 8 9 al centro, 5 6 1 in fondo, viste dalla squadra di quella metà ·
+        zona di partenza dell'attacco dedotta da posizione e ruolo · arrivo toccato dopo battuta o attacco
     } @else if (view === POINTS) {
         Punti regalati = punti nati da errori e cartellini dell'altra squadra · Non specificati = "+" senza motivo
     } @else if (view === ROTATIONS) {

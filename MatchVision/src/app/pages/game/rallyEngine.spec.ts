@@ -1,5 +1,5 @@
 import {
-    afterPoint, DEFAULT_FORMAT, isDecidingSet, matchWinner, POINT_REASONS, pointReason, pointsToWinSet, reasonChoices,
+    afterPoint, attackStartZone, DEFAULT_FORMAT, opponentPoint, positionOf, roleKind, zoneAt, zoneCenter, isDecidingSet, matchWinner, POINT_REASONS, pointReason, pointsToWinSet, reasonChoices,
     serverIndex, setWinner, sideSwitchDue, suggestFundamental, terminalWinner, touchReason,
 } from './rallyEngine'
 
@@ -116,4 +116,44 @@ describe('rallyEngine', () => {
             expect(new Set(POINT_REASONS.map(r => r.code)).size).toBe(POINT_REASONS.length)
         })
     })
+
+    describe('court zones', () => {
+        it('numbers the zones as DataVolley, seen by the team on that half', () => {
+            expect([zoneAt(0.1, 0.1), zoneAt(0.5, 0.1), zoneAt(0.9, 0.1)]).toEqual([4, 3, 2])
+            expect([zoneAt(0.1, 0.5), zoneAt(0.5, 0.5), zoneAt(0.9, 0.5)]).toEqual([7, 8, 9])
+            expect([zoneAt(0.1, 0.9), zoneAt(0.5, 0.9), zoneAt(0.9, 0.9)]).toEqual([5, 6, 1])
+            expect(zoneAt(1, 1)).toBe(1)
+            expect(zoneCenter(1)).toEqual({ u: 2.5 / 3, d: 2.5 / 3 })
+        })
+        it('reads a tap on the opponent half from the opponent side', () => {
+            // Opponent on the right half: top-right corner of that half = its back right = zone 1
+            expect(zoneAt(...xy(opponentPoint(0.95, 0.05, true)))).toBe(1)
+            // and near the net at the bottom = its front left = zone 4
+            expect(zoneAt(...xy(opponentPoint(0.05, 0.95, true)))).toBe(4)
+            // Opponent on the left half: bottom-left corner = its back right = zone 1
+            expect(zoneAt(...xy(opponentPoint(0.05, 0.95, false)))).toBe(1)
+            expect(zoneAt(...xy(opponentPoint(0.95, 0.05, false)))).toBe(4)
+        })
+        it('knows the positions after a rotation', () => {
+            expect([0, 1, 2, 3, 4, 5].map(i => positionOf(i, 0))).toEqual([1, 2, 3, 4, 5, 6])
+            expect(positionOf(1, 1)).toBe(1) // the player in II serves after one side-out
+            expect(positionOf(0, 1)).toBe(6)
+        })
+        it('guesses the attack start zone from role and position', () => {
+            expect(roleKind('Lato')).toBe('outside')
+            expect(roleKind('MIDDLE_BLOCKER')).toBe('middle')
+            expect(attackStartZone('Lato', 2)).toBe(4)       // front row: outside hitters attack from 4
+            expect(attackStartZone('Centrale', 4)).toBe(3)
+            expect(attackStartZone('Opposto', 3)).toBe(2)
+            expect(attackStartZone('Opposto', 6)).toBe(9)    // back row
+            expect(attackStartZone('Lato', 5)).toBe(8)       // pipe
+            expect(attackStartZone('', 5)).toBe(7)
+            expect(attackStartZone('', 3)).toBe(3)
+            expect(attackStartZone('Libero', 6)).toBeNull()
+        })
+    })
 })
+
+function xy(p: { u: number; d: number }): [number, number] {
+    return [p.u, p.d]
+}

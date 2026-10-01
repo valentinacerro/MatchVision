@@ -6,7 +6,7 @@ import { Team } from '../../../Models/Team'
 import { Set } from '../../../Models/Set'
 import { MatchesService } from '../../../services/matchesService'
 import { GlobalService } from '../../../services/globalService'
-import { KpiRow, RallyStats, StatsService } from '../../../services/statsService'
+import { KpiRow, RallyStats, StatsService, TouchMapEntry } from '../../../services/statsService'
 import { KpiViewComponent, pointsView } from '../../shared/kpiView/kpiView.component'
 import { boxScore } from '../../shared/kpiView/boxScore'
 
@@ -33,6 +33,7 @@ export class MatchesDetailsComponent implements OnInit{
     scope: 'match' | number = 'match'
     rows: KpiRow[] = []
     rallies: RallyStats | null = null
+    map: TouchMapEntry[] = []
     statsLoading = false
     statsError = ''
     private request = 0
@@ -104,11 +105,13 @@ export class MatchesDetailsComponent implements OnInit{
         this.statsError = ''
         const kpi = this.scope === 'match' ? this.statsService.getMatchKpi(this.id) : this.statsService.getSetKpi(this.scope)
         const rallies = this.scope === 'match' ? this.statsService.getMatchRallyStats(this.id) : this.statsService.getSetRallyStats(this.scope)
-        forkJoin({ rows: kpi, rallies }).subscribe({
-            next: ({ rows, rallies }) => {
+        const map = this.scope === 'match' ? this.statsService.getMatchTouchMap(this.id) : this.statsService.getSetTouchMap(this.scope)
+        forkJoin({ rows: kpi, rallies, map }).subscribe({
+            next: ({ rows, rallies, map }) => {
                 if (request !== this.request) return
                 this.rows = rows
                 this.rallies = rallies
+                this.map = map
                 this.statsLoading = false
                 this.cdr.detectChanges()
             },

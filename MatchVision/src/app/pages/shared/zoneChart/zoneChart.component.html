@@ -1,0 +1,31 @@
+<svg class="zone-chart" [attr.viewBox]="'-12 -12 ' + (SIZE + 24) + ' ' + (SIZE * 2 + 24)" role="img"
+    [attr.aria-label]="attack ? 'Attacchi: partenza in basso, arrivo in alto' : 'Battute: arrivo nel campo avversario'">
+    <!-- Opponent half -->
+    @for (c of targetCells; track c.zone) {
+        <rect [attr.x]="c.x" [attr.y]="c.y" width="100" height="100" class="cell target" [attr.fill-opacity]="0.08 + c.fill * 0.6"></rect>
+        <text [attr.x]="c.x + 6" [attr.y]="c.y + 16" class="zone-number">{{ c.zone }}</text>
+        <text [attr.x]="c.x + 94" [attr.y]="c.y + 24" class="count">{{ c.label }}</text>
+        <text [attr.x]="c.x + 94" [attr.y]="c.y + 40" class="share">{{ c.sub }}</text>
+    }
+    <!-- Our half: the start zones of the attacks -->
+    @for (c of startCells; track c.zone) {
+        <rect [attr.x]="c.x" [attr.y]="c.y" width="100" height="100" class="cell own" [attr.fill-opacity]="attack ? 0.06 + c.fill * 0.5 : 0.04"></rect>
+        <text [attr.x]="c.x + 6" [attr.y]="c.y + 16" class="zone-number">{{ c.zone }}</text>
+        @if (attack) {
+            <text [attr.x]="c.x + 94" [attr.y]="c.y + 24" class="count">{{ c.label }}</text>
+            <text [attr.x]="c.x + 94" [attr.y]="c.y + 40" class="share">{{ c.sub }}</text>
+        }
+    }
+    <!-- Court lines: sidelines, end lines, 3 m lines, net -->
+    <rect x="0" y="0" [attr.width]="SIZE" [attr.height]="SIZE * 2" class="court"></rect>
+    <line x1="0" [attr.y1]="SIZE - 100" [attr.x2]="SIZE" [attr.y2]="SIZE - 100" class="attack-line"></line>
+    <line x1="0" [attr.y1]="SIZE + 100" [attr.x2]="SIZE" [attr.y2]="SIZE + 100" class="attack-line"></line>
+    <line x1="-8" [attr.y1]="SIZE" [attr.x2]="SIZE + 8" [attr.y2]="SIZE" class="net"></line>
+    <!-- Every ball with its end point (and, for attacks, a line from where it started) -->
+    @for (d of dots; track $index) {
+        @if (d.from) {
+            <line [attr.x1]="d.from.x" [attr.y1]="d.from.y" [attr.x2]="d.x" [attr.y2]="d.y" [attr.stroke]="d.color" class="path"></line>
+        }
+        <circle [attr.cx]="d.x" [attr.cy]="d.y" r="6" [attr.fill]="d.color" class="dot"></circle>
+    }
+</svg>

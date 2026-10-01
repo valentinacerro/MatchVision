@@ -21,8 +21,8 @@ import { GameEvent } from '../../services/eventsService'
 import { OutboxEvent, OutboxService } from '../../services/outboxService'
 import { forkJoin, Subscription, switchMap } from 'rxjs'
 import {
-    afterPoint, DEFAULT_FORMAT, isDecidingSet, MatchFormat, matchWinner, pointReason, PointReason, reasonChoices, serverIndex,
-    setsWon, setWinner, sideSwitchDue, suggestFundamental, Team, terminalWinner, touchReason,
+    afterPoint, attackStartZone, DEFAULT_FORMAT, isDecidingSet, MatchFormat, matchWinner, opponentPoint, pointReason, PointReason,
+    positionOf, reasonChoices, serverIndex, setsWon, setWinner, sideSwitchDue, suggestFundamental, Team, terminalWinner, touchReason, zoneAt,
 } from './rallyEngine'
 
 // A touch as tracked on this page: tap order and rally are fixed when the scout taps.
@@ -180,6 +180,11 @@ export class GameComponent implements OnInit, OnDestroy{
     private infoTimer: any = null
     private autoSelected: Player | null = null // the server preselected by the app, not by the scout
     manualPick: number = 0 // grows at every player tap by the scout (the pad then accepts a quick grade tap)
+    // After a serve or an attack the opponent half can be tapped where the ball ended (optional):
+    // the client id of that touch, until the scout taps it or goes on
+    zonePrompt: string | null = null
+    lastTarget: { left: number; top: number } | null = null // the tap just made, shown for a moment
+    private targetTimer: any = null
 
     // To insert a touch
     selectedPlayer!: Player | null
@@ -269,6 +274,7 @@ export class GameComponent implements OnInit, OnDestroy{
     private setReadOnly(reason: string): void {
         this.readOnlyReason = reason
         this.selectedPlayer = null
+        this.zonePrompt = null
         clearTimeout(this.saveTimer)
         this.saveTimer = null
         this.queuedState = null
@@ -611,6 +617,7 @@ export class GameComponent implements OnInit, OnDestroy{
     // Leaving clears the global match state; "Riprendi scout" reloads it
     ngOnDestroy(): void {
         clearTimeout(this.infoTimer)
+        clearTimeout(this.targetTimer)
         this.outboxEvents?.unsubscribe()
         // The newest state goes to the outbox now, so "Riprendi scout" finds it
         if (this.saveTimer) {
@@ -900,6 +907,7 @@ export class GameComponent implements OnInit, OnDestroy{
         // Tapping the server preselected by the app confirms it instead of deselecting it
         if (this.locked) return
         this.manualPick++
+        this.zonePrompt = null // the scout went on: no end zone for the last touch
         const confirmsAuto = this.autoSelected?.id === player.id && this.selectedOnCourt?.id === player.id
         this.selectedPlayer = !confirmsAuto && this.selectedOnCourt?.id === player.id ? null : player
         this.autoSelected = null
@@ -1165,6 +1173,54 @@ export class GameComponent implements OnInit, OnDestroy{
         rallyTouches.forEach(t => this.deleteTouch(t))
     }
 
+    // Zone the attack starts from: the attacker's position now and its role (see attackStartZone)
+    private attackZoneOf(player: Player): number | null {
+        const i = this.starting_players.findIndex((_, k) => this.displayedAt(k).id === player.id)
+        return i < 0 ? null : attackStartZone(player.role, positionOf(i, this.rotation))
+    }
+
+    // Our team is on the left half when index is 0: the opponent is on the right
+    get opponentOnRight(): boolean {
+        return this.index === 0
+    }
+
+    // Zone numbers in screen order (rows from the top) for the grid drawn on the opponent half
+    get targetZones(): number[] {
+        const cells: number[] = []
+        for (let r = 0; r < 3; r++)
+            for (let c = 0; c < 3; c++)
+                cells.push(zoneAt(...this.cellPoint(r, c)))
+        return cells
+    }
+
+    private cellPoint(r: number, c: number): [number, number] {
+        const p = opponentPoint((c + 0.5) / 3, (r + 0.5) / 3, this.opponentOnRight)
+        return [p.u, p.d]
+    }
+
+    // Tap on the opponent half: the end point of the last serve or attack
+    onTargetTap(event: MouseEvent): void {
+        const clientId = this.zonePrompt
+        const id = this.matchId
+        if (!clientId || !id || this.locked) return
+        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+        const fx = (event.clientX - rect.left) / rect.width
+        const fy = (event.clientY - rect.top) / rect.height
+        const { u, d } = opponentPoint(fx, fy, this.opponentOnRight)
+        const round = (v: number) => Math.round(v * 1000) / 1000
+        const patch = { end_zone: zoneAt(u, d), end_x: round(u), end_y: round(d) }
+        if (!this.record(() => this.outbox.updateTouch(id, clientId, patch, this.writer))) return
+        this.touches = this.touches.map(t => t.client_id === clientId ? { ...t, ...patch } : t)
+        this.zonePrompt = null
+        // A dot where the scout tapped, for a moment (in % of the whole court)
+        const half = this.opponentOnRight ? 50 : 0
+        this.lastTarget = { left: half + fx * 50, top: fy * 100 }
+        clearTimeout(this.targetTimer)
+        this.targetTimer = setTimeout(() => { this.lastTarget = null; this.cdr.detectChanges() }, 1500)
+        this.showInfo(`Zona ${patch.end_zone}`, 1500)
+        this.saveState()
+    }
+
     // Delete last touch
     undoLastTouch(): void {
         const last = this.touches.at(-1)
@@ -1178,6 +1234,7 @@ export class GameComponent implements OnInit, OnDestroy{
         if (!id || this.locked) return
         if (!this.record(() => this.outbox.removeTouch(id, touch, this.writer))) return
         this.touches = this.touches.filter(t => t !== touch)
+        if (this.zonePrompt === touch.client_id) this.zonePrompt = null
         this.revertPointOf(touch.client_id)
         this.clearError('touch')
         this.updateSuggestion()
@@ -1196,10 +1253,13 @@ export class GameComponent implements OnInit, OnDestroy{
         }
         if (!this.selectedPlayer || !event.fundamental || !event.outcome) return null
         const touch: TrackedTouch = { id: -1, set: currentSet.id, player: this.selectedPlayer.id, fundamental: event.fundamental,
-            outcome: event.outcome, client_id: newClientId(), seq: ++this.touchSeq, rally: this.rallySeq }
+            outcome: event.outcome, client_id: newClientId(), seq: ++this.touchSeq, rally: this.rallySeq,
+            start_zone: event.fundamental === 'Attacco' ? this.attackZoneOf(this.selectedPlayer) : null }
         const { id: _, seq, rally, ...payload } = touch
         if (!this.record(() => this.outbox.enqueue('touch', id, payload, this.writer))) return null
         this.touches = [...this.touches, touch]
+        // Serves and attacks: where did the ball go? (one tap on the opponent half, optional)
+        this.zonePrompt = ['Battuta', 'Attacco'].includes(event.fundamental) ? touch.client_id as string : null
         this.clearError('touch')
         this.clearError('rally')
         this.saveState() // an unsent touch survives a reload
@@ -1293,6 +1353,7 @@ export class GameComponent implements OnInit, OnDestroy{
 
     resetVariables() {
         this.selectedPlayer = null
+        this.zonePrompt = null
 
         this.starting_players = []
         this.libero = null

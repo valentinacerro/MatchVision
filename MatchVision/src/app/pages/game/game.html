@@ -103,6 +103,20 @@
             <div class="line center-line"></div>
             <div class="line attack-line-home"></div>
 
+            <!-- After a serve or an attack: one tap where the ball ended (optional, DataVolley zones) -->
+            @if (zonePrompt && !locked) {
+                <div class="target-half" [class.right-half]="opponentOnRight" [class.left-half]="!opponentOnRight"
+                    role="button" aria-label="Tocca dove è finita la palla" (click)="onTargetTap($event)">
+                    <div class="target-grid">
+                        @for (zone of targetZones; track $index) { <span class="target-zone">{{ zone }}</span> }
+                    </div>
+                    <span class="target-hint">Dove è finita? (facoltativo)</span>
+                </div>
+            }
+            @if (lastTarget) {
+                <div class="target-dot" [style.left.%]="lastTarget.left" [style.top.%]="lastTarget.top"></div>
+            }
+
         <!-- Players icons -->
             @for (player of starting_players; track $index){
                 @let shown = displayedAt($index);

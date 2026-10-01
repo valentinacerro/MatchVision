@@ -34,6 +34,6 @@
             @if (error) { <span class="text-danger ms-2">{{ error }}</span> }
             <a class="btn btn-outline-secondary ms-auto" [routerLink]="['/match_details', matchId]">Dettagli partita</a>
         </div>
-        <app-kpi-view [rows]="rows" [rallies]="rallies"></app-kpi-view>
+        <app-kpi-view [rows]="rows" [rallies]="rallies" [map]="map"></app-kpi-view>
     </div>
 </div>

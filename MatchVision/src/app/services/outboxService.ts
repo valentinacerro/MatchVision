@@ -9,7 +9,7 @@ import { AuthService } from './authService'
 // a match scouted without signal reaches the server later, even if the game page is closed.
 
 export type OpKind =
-    | 'match' | 'touch' | 'touchDelete' | 'rally' | 'rallyUpdate' | 'rallyDelete' | 'event'
+    | 'match' | 'touch' | 'touchUpdate' | 'touchDelete' | 'rally' | 'rallyUpdate' | 'rallyDelete' | 'event'
     | 'set' | 'setScore' | 'setDelete' | 'state' | 'results'
 
 export interface Op {
@@ -39,7 +39,7 @@ const KEY = 'matchvision.outbox.' // + user id
 const REQUEST_TIMEOUT_MS = 15000
 const RETRY_MS = [1000, 2000, 5000, 10000, 30000]
 const CREATES: OpKind[] = ['touch', 'rally', 'event']
-const DELETES: OpKind[] = ['touchDelete', 'rallyDelete', 'setDelete', 'rallyUpdate'] // 404 = already gone
+const DELETES: OpKind[] = ['touchDelete', 'rallyDelete', 'setDelete', 'rallyUpdate', 'touchUpdate'] // 404 = already gone
 
 function newId(): string {
     return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -130,9 +130,18 @@ export class OutboxService {
 
     // The reason of a point, chosen after it: goes into the rally if it is still waiting
     updateRally(match: number, clientId: string, patch: { reason: string; cause: string }, writer: string): void {
-        const waiting = this.data.ops.find(o => o.kind === 'rally' && o.body.client_id === clientId && o.id !== this.inFlight)
+        this.update('rally', 'rallyUpdate', match, clientId, patch, writer)
+    }
+
+    // Where the ball ended, tapped after the touch: goes into the touch if it is still waiting
+    updateTouch(match: number, clientId: string, patch: { end_zone: number; end_x: number; end_y: number }, writer: string): void {
+        this.update('touch', 'touchUpdate', match, clientId, patch, writer)
+    }
+
+    private update(create: OpKind, kind: OpKind, match: number, clientId: string, patch: object, writer: string): void {
+        const waiting = this.data.ops.find(o => o.kind === create && o.body.client_id === clientId && o.id !== this.inFlight)
         if (!waiting) {
-            this.enqueue('rallyUpdate', match, { client_id: clientId, ...patch }, writer)
+            this.enqueue(kind, match, { client_id: clientId, ...patch }, writer)
             return
         }
         this.change(d => {
@@ -290,6 +299,10 @@ export class OutboxService {
                 return this.http.post(`${this.apiUrl}/matches/create/`, match)
             }
             case 'touch': return this.http.post(`${this.apiUrl}/touches/create/`, { ...b, set: r(b.set), writer })
+            case 'touchUpdate': {
+                const { client_id, ...zones } = b
+                return this.http.patch(`${this.apiUrl}/touches/update/client/${encodeURIComponent(client_id)}/`, { ...zones, writer })
+            }
             case 'touchDelete': return b.client_id
                 ? this.http.delete(`${this.apiUrl}/touches/delete/client/${encodeURIComponent(b.client_id)}/`, { params })
                 : this.http.delete(`${this.apiUrl}/touches/delete/${b.id}/`, { params })

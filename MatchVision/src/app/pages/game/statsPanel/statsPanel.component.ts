@@ -1,7 +1,7 @@
 import { ChangeDetectorRef, Component, inject, Input, TemplateRef, ViewChild } from '@angular/core'
 import { NgbModal } from '@ng-bootstrap/ng-bootstrap'
 import { forkJoin } from 'rxjs'
-import { KpiRow, RallyStats, StatsService } from '../../../services/statsService'
+import { KpiRow, RallyStats, StatsService, TouchMapEntry } from '../../../services/statsService'
 import { KpiViewComponent } from '../../shared/kpiView/kpiView.component'
 import { OutboxService } from '../../../services/outboxService'
 
@@ -29,6 +29,7 @@ export class StatsPanelComponent {
     scope: 'set' | 'match' = 'set'
     rows: KpiRow[] = []
     rallies: RallyStats | null = null
+    map: TouchMapEntry[] = []
     loading = false
     error = ''
     waiting = 0 // changes of this match not on the server yet: the stats do not include them
@@ -65,11 +66,13 @@ export class StatsPanelComponent {
         this.error = ''
         const kpi = this.scope === 'set' ? this.statsService.getSetKpi(id) : this.statsService.getMatchKpi(id)
         const rallies = this.scope === 'set' ? this.statsService.getSetRallyStats(id) : this.statsService.getMatchRallyStats(id)
-        forkJoin({ rows: kpi, rallies }).subscribe({
-            next: ({ rows, rallies }) => {
+        const map = this.scope === 'set' ? this.statsService.getSetTouchMap(id) : this.statsService.getMatchTouchMap(id)
+        forkJoin({ rows: kpi, rallies, map }).subscribe({
+            next: ({ rows, rallies, map }) => {
                 if (request !== this.request) return
                 this.rows = rows
                 this.rallies = rallies
+                this.map = map
                 this.loading = false
                 this.cdr.detectChanges()
             },

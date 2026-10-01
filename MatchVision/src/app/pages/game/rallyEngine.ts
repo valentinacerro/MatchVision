@@ -144,3 +144,65 @@ export function touchReason(fundamental: string, outcome: string): string {
     if (outcome === '++') return TOUCH_WINNERS[fundamental] ?? ''
     return ''
 }
+
+// ---------------------------------------------------------------------------------------------
+// Court zones as in DataVolley: 9 squares of 3x3 m per half, seen by the team on that half facing
+// the net: 4 3 2 at the net, 7 8 9 in the middle, 5 6 1 at the end line.
+// A point in a half: u = 0 at that team's left sideline, 1 at its right; d = 0 at the net, 1 at the end line.
+// ---------------------------------------------------------------------------------------------
+const ZONE_GRID = [[4, 3, 2], [7, 8, 9], [5, 6, 1]] // [row from the net][column from the left]
+
+export function zoneAt(u: number, d: number): number {
+    const third = (v: number) => Math.min(2, Math.max(0, Math.floor(v * 3)))
+    return ZONE_GRID[third(d)][third(u)]
+}
+
+// Centre of a zone, in the same (u, d) terms
+export function zoneCenter(zone: number): { u: number; d: number } {
+    const row = ZONE_GRID.findIndex(r => r.includes(zone))
+    return { u: (ZONE_GRID[row].indexOf(zone) + 0.5) / 3, d: (row + 0.5) / 3 }
+}
+
+// A tap on the opponent's half of the drawing (fx, fy: 0-1 from its top-left corner) seen by the opponent.
+// The drawing has the net in the middle: with the opponent on the right half, its net side is on the left
+// and, facing the net, its right hand is at the top of the screen (and the other way round on the left half).
+export function opponentPoint(fx: number, fy: number, opponentOnRight: boolean): { u: number; d: number } {
+    const clamp = (v: number) => Math.min(1, Math.max(0, v))
+    return opponentOnRight ? { u: clamp(1 - fy), d: clamp(fx) } : { u: clamp(fy), d: clamp(1 - fx) }
+}
+
+export type RoleKind = 'setter' | 'outside' | 'middle' | 'opposite' | 'libero' | null
+
+// Roles are saved in Italian from the players page (older data may have the English codes)
+export function roleKind(role: string | null | undefined): RoleKind {
+    const r = (role ?? '').toLowerCase()
+    if (['alzatore', 'palleggiatore', 'setter'].includes(r)) return 'setter'
+    if (['lato', 'schiacciatore', 'banda', 'outside_hitter'].includes(r)) return 'outside'
+    if (['centrale', 'middle_blocker'].includes(r)) return 'middle'
+    if (['opposto', 'opposite_hitter'].includes(r)) return 'opposite'
+    if (r === 'libero') return 'libero'
+    return null
+}
+
+// Position (1-6) of the player at lineup index i, after `rotation` rotations
+export function positionOf(i: number, rotation: number): number {
+    return ((i - rotation) % 6 + 6) % 6 + 1
+}
+
+// Where an attack starts, by the usual switch of positions after the serve: in the front row the outside
+// hitter goes to 4, the middle to 3, the opposite (and the setter) to 2; from the back row the attack starts
+// in 9 (right), 8 (pipe) or 7 (left), the opposite on the right and the outside hitter in the middle
+export function attackStartZone(role: string | null | undefined, position: number): number | null {
+    const kind = roleKind(role)
+    if (kind === 'libero') return null
+    const front = [2, 3, 4].includes(position)
+    if (front) {
+        if (kind === 'outside') return 4
+        if (kind === 'middle') return 3
+        if (kind === 'opposite' || kind === 'setter') return 2
+        return position
+    }
+    if (kind === 'opposite') return 9
+    if (kind === 'outside') return 8
+    return ({ 1: 9, 6: 8, 5: 7 } as Record<number, number>)[position] ?? null
+}
