@@ -2,8 +2,11 @@
 
     <h1 class="app-title" [routerLink]="['/']">MatchVision</h1>
 
-    <button class="logout-btn">
-        <img src="/icons/logout-icon.png" alt="Logout">
-    </button>
+    @if (auth.user(); as user) {
+        <span class="account" [title]="user.email">{{ user.name || user.email }}</span>
+        <button type="button" class="logout-btn" title="Esci" (click)="logout()">
+            <img src="/icons/logout-icon.png" alt="Esci">
+        </button>
+    }
 
 </header>

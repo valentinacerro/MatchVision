@@ -1,25 +1,38 @@
 <div class="container mt-5 mb-5">
   <div class="row justify-content-center">
     <div class="col-md-6 col-lg-4">
-        <form class="row g-3">
+        <h2 class="h4 mb-4">Crea un account</h2>
+        <form class="row g-3" [formGroup]="registerForm" (ngSubmit)="onSubmit()" novalidate>
         <div class="col-md-6">
-            <label for="inputEmail4" class="form-label">Nome</label>
-            <input type="email" class="form-control" id="inputEmail4">
+            <label for="inputName" class="form-label">Nome</label>
+            <input type="text" class="form-control" id="inputName" formControlName="name" autocomplete="given-name">
         </div>
         <div class="col-md-6">
-            <label for="inputEmail4" class="form-label">Cognome</label>
-            <input type="email" class="form-control" id="inputEmail4">
+            <label for="inputSurname" class="form-label">Cognome</label>
+            <input type="text" class="form-control" id="inputSurname" formControlName="surname" autocomplete="family-name">
         </div>
         <div class="col-md-12">
-            <label for="inputEmail4" class="form-label">Email</label>
-            <input type="email" class="form-control" id="inputEmail4">
+            <label for="inputEmail" class="form-label">Email</label>
+            <input type="email" class="form-control" id="inputEmail" formControlName="email" autocomplete="username"
+                [class.is-invalid]="invalid('email')">
+            <div class="invalid-feedback">Inserisci un'email valida</div>
         </div>
         <div class="col-md-12">
-            <label for="inputPassword4" class="form-label">Scegli la password</label>
-            <input type="password" class="form-control" id="inputPassword4">
+            <label for="inputPassword" class="form-label">Scegli la password</label>
+            <input type="password" class="form-control" id="inputPassword" formControlName="password" autocomplete="new-password"
+                aria-describedby="passwordHelp" [class.is-invalid]="invalid('password')">
+            <div id="passwordHelp" class="form-text">Almeno 8 caratteri, non solo numeri.</div>
         </div>
-        <div class="col-12">
-            <button type="submit" [routerLink]="['']" class="btn btn-primary">Registrati</button>
+        @if (errors().length > 0) {
+            <div class="col-12">
+                <div class="alert alert-danger py-2 mb-0" role="alert">
+                    @for (message of errors(); track message) { <div>{{ message }}</div> }
+                </div>
+            </div>
+        }
+        <div class="col-12 d-flex justify-content-between align-items-center gap-3">
+            <button type="submit" class="btn btn-primary" [disabled]="sending()">{{ sending() ? 'Registrazione…' : 'Registrati' }}</button>
+            <a [routerLink]="['/login']" queryParamsHandling="preserve" class="text-decoration-none">Hai già un account? Accedi</a>
         </div>
         </form>
     </div>

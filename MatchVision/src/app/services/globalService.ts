@@ -5,7 +5,6 @@ import { Player } from "../Models/Player"
 import { Team } from "../Models/Team"
 import { Match } from "../Models/Match"
 import { Set } from "../Models/Set"
-import { User } from "../Models/User"
 
 import { PlayersService } from "./playersService"
 import { TeamsService } from "./teamsService"
@@ -48,7 +47,6 @@ export class GlobalService {
     }
     )
     currentPlayers = signal<Player[]>([])
-    currentUserId = signal<number | null>(null)
 
     private apiUrl = API_URL
 
@@ -82,10 +80,6 @@ export class GlobalService {
         this.currentPlayers.set([])
     }
 
-    setCurrentUser(userId: number) {
-        this.currentUserId.set(userId)
-    }
-    
     getPlayersByTeamId(id: number): Observable<Player[]>{
         return this.teamsService.getTeamPlayers(id)
     }

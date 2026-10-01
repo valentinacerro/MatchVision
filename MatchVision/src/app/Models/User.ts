@@ -1,16 +1,7 @@
-
-import { Match } from "./Match";
-import { Player } from "./Player";
-import { Team } from "./Team";
-
-export class User {
-  constructor(
-    public email?: string,
-    public password?: string,
-    public name?: string,
-    public surname?: string,
-    public matches?: Match[],
-    public players?: Player[],
-    public teams?: Team[] 
-  ) {}
+// The logged-in account (the email is also the username)
+export interface Account {
+    id: number
+    email: string
+    name: string
+    surname: string
 }

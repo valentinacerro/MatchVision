@@ -13,6 +13,15 @@
     width: 100%;
     z-index: 1000;
 
+    .account {
+        max-width: 40vw;
+        margin-right: 0.5rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.95rem;
+    }
+
     .logout-btn {
         background: transparent;
         border: none;
