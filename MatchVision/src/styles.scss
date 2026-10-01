@@ -14,3 +14,19 @@ body {
   justify-content: center;
   align-items: center;
 }
+
+// Printing (match report): only the page content, on A4
+@page {
+  size: A4 portrait;
+  margin: 12mm;
+}
+
+@media print {
+  app-header, app-footer, .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+  }
+}

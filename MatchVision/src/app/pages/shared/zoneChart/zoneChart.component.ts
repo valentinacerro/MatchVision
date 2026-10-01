@@ -3,6 +3,7 @@ import { zoneCenter } from '../../game/rallyEngine'
 import { ZoneStats } from './zoneStats'
 
 const SIZE = 300 // one half: 9 x 9 m
+const MAX_LINES = 30 // more lines than this hide the chart: the start zones are counted in our half anyway
 const ROWS = [[4, 3, 2], [7, 8, 9], [5, 6, 1]] // DataVolley zones from the net, seen by the team on that half
 
 interface Cell { zone: number; x: number; y: number; fill: number; label: string; sub: string }
@@ -46,8 +47,14 @@ export class ZoneChartComponent {
         return this.stats.points.map(p => {
             const end = { x: (1 - p.u) * SIZE, y: SIZE - p.d * SIZE }
             const s = p.start ? zoneCenter(p.start) : null
-            return { ...end, color: this.color(p.outcome), from: s && this.attack ? { x: s.u * SIZE, y: SIZE + s.d * SIZE } : null }
+            const lines = this.attack && this.stats.points.length <= MAX_LINES
+            return { ...end, color: this.color(p.outcome), from: s && lines ? { x: s.u * SIZE, y: SIZE + s.d * SIZE } : null }
         })
+    }
+
+    // Serves: only the half where they end (where they start is not recorded)
+    get height(): number {
+        return this.attack ? SIZE * 2 : SIZE
     }
 
     private place(zone: number): { col: number; row: number } {

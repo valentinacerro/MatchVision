@@ -75,6 +75,18 @@ cd backend
 python manage.py assign_orphans tua@email.it
 ```
 
+## Report e partita dimostrativa
+
+Da **Dettagli** di una partita, **Report PDF** apre il report su due pagine A4 (box score, set per set, punti per motivo,
+side-out e break-point, grafici delle zone): **Stampa / Salva come PDF**.
+
+Per avere dati da mostrare, una partita completa di 4 set (rally, motivi dei punti, zone) per un account:
+
+```bash
+cd backend
+python manage.py seed_demo tua@email.it
+```
+
 ## Test
 
 ```bash

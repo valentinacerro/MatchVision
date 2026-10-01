@@ -1,0 +1,167 @@
+<div class="report-toolbar no-print">
+    <a [routerLink]="['/match_details', id]" class="btn btn-outline-secondary">← Dettagli</a>
+    <button type="button" class="btn btn-primary" [disabled]="loading || !!error" (click)="print()">Stampa / Salva come PDF</button>
+    <span class="text-muted small">Nella finestra di stampa scegli "Salva come PDF" per avere il file</span>
+</div>
+
+@if (loading) {
+    <div class="paper"><p class="text-muted">Caricamento…</p></div>
+} @else if (error) {
+    <div class="paper"><div class="alert alert-danger mb-0">{{ error }}</div></div>
+} @else if (match) {
+<div class="report">
+
+    <!-- Page 1: result, box score, set by set -->
+    <section class="paper page">
+        <header class="report-header">
+            <div class="brand">MatchVision · Report partita · generato il {{ printedAt.toLocaleDateString('it-IT') }}</div>
+            <h1>{{ match.name }}</h1>
+            <div class="meta">{{ team?.name }} · {{ date }}</div>
+            <div class="result">
+                <span class="team">{{ team?.name ?? 'CASA' }}</span>
+                <span class="sets">{{ setsWon[0] }} – {{ setsWon[1] }}</span>
+                <span class="team">Avversari</span>
+            </div>
+            <div class="partials">
+                @for (s of sets; track s.id) { <span>{{ s.home_score }}-{{ s.guest_score }}</span> }
+            </div>
+        </header>
+
+        <h2>Box score</h2>
+        @if (box.length === 0) {
+            <p class="text-muted">Nessun tocco registrato</p>
+        } @else {
+            <table class="report-table box">
+                <thead>
+                    <tr class="group-head">
+                        <th colspan="2"></th><th colspan="3">Punti</th><th colspan="3">Battuta</th>
+                        <th colspan="4">Ricezione</th><th colspan="5">Attacco</th><th>Muro</th>
+                    </tr>
+                    <tr>
+                        <th>#</th><th class="left">Giocatore</th>
+                        <th>Tot</th><th>Err</th><th>Saldo</th>
+                        <th>Tot</th><th>Ace</th><th>Err</th>
+                        <th>Tot</th><th>Media</th><th>Pos%</th><th>Prf%</th>
+                        <th>Tot</th><th>Kill</th><th>Err</th><th>Kill%</th><th>Hit%</th>
+                        <th>Pt</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (r of box; track r.key) {
+                        <tr [class.team-row]="r.team">
+                            <td>{{ r.number ?? '' }}</td><td class="left">{{ r.player }}</td>
+                            <td class="strong">{{ r.points }}</td><td>{{ r.errors }}</td><td>{{ r.balance > 0 ? '+' + r.balance : r.balance }}</td>
+                            <td>{{ r.serve.tot || '' }}</td><td>{{ r.serve.tot ? r.serve.aces : '' }}</td><td>{{ r.serve.tot ? r.serve.errors : '' }}</td>
+                            <td>{{ r.reception.tot || '' }}</td><td>{{ r.reception.tot ? num(r.reception.avg) : '' }}</td>
+                            <td>{{ r.reception.tot ? pct(r.reception.positive) : '' }}</td><td>{{ r.reception.tot ? pct(r.reception.perfect) : '' }}</td>
+                            <td>{{ r.attack.tot || '' }}</td><td>{{ r.attack.tot ? r.attack.kills : '' }}</td><td>{{ r.attack.tot ? r.attack.errors : '' }}</td>
+                            <td>{{ r.attack.tot ? pct(r.attack.killPct) : '' }}</td><td>{{ r.attack.tot ? pct(r.attack.hitPct) : '' }}</td>
+                            <td>{{ r.blocks || '' }}</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        @if (lines.length) {
+            <h2>Set per set</h2>
+            <table class="report-table sets">
+                <thead>
+                    <tr><th>Set</th><th>Punteggio</th><th>Side-out</th><th>Break-point</th><th>Hit% squadra</th><th>Ace</th><th>Errori</th><th>Regalati (avv. – noi)</th></tr>
+                </thead>
+                <tbody>
+                    @for (l of lines; track l.number) {
+                        <tr>
+                            <td>{{ l.number }}</td><td class="strong">{{ l.home }}-{{ l.guests }}</td>
+                            <td>{{ pct(l.sideout) }}</td><td>{{ pct(l.breakpoint) }}</td><td>{{ pct(l.hitPct) }}</td>
+                            <td>{{ l.aces }}</td><td>{{ l.errors }}</td><td>{{ l.gifted[0] }} – {{ l.gifted[1] }}</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        <p class="legend">
+            Punti = kill + ace + muri · Saldo = punti − errori · Media ricezione 0-3: ++ 3, + 2, ! 1,5, — 1, — — 0 ·
+            Pos% = (++ + +) / tot · Prf% = ++ / tot · Hit% = (kill − errori) / tentativi ·
+            Side-out = punti vinti sul servizio avversario · Break-point = punti vinti sul proprio servizio
+        </p>
+    </section>
+
+    <!-- Page 2: points, rotations, zones -->
+    <section class="paper page">
+        @if (rallies?.total) {
+            <div class="summary">
+                <div><span>Side-out</span><strong>{{ pct(rallies!.sideout.pct) }}</strong><small>{{ rallies!.sideout.won }}/{{ rallies!.sideout.total }}</small></div>
+                <div><span>Break-point</span><strong>{{ pct(rallies!.breakpoint.pct) }}</strong><small>{{ rallies!.breakpoint.won }}/{{ rallies!.breakpoint.total }}</small></div>
+                @if (rallies!.points; as p) {
+                    <div><span>Punti regalati</span><strong>{{ p.home.gifted }} – {{ p.guests.gifted }}</strong><small>dall'avversario – da noi</small></div>
+                }
+            </div>
+
+            <div class="two-columns">
+                @for (t of points; track t.team) {
+                    <table class="report-table points">
+                        <thead><tr><th class="left">Punti {{ t.team === 'home' ? (team?.name ?? 'CASA') : 'Avversari' }}</th><th>{{ t.total }}</th></tr></thead>
+                        <tbody>
+                            @for (g of t.groups; track g.label) {
+                                <tr class="group-row"><td class="left">{{ g.label }}</td><td>{{ g.total }}</td></tr>
+                                @for (i of g.items; track i.label) { <tr><td class="left indent">{{ i.label }}</td><td>{{ i.count }}</td></tr> }
+                            }
+                            @if (t.unspecified > 0) { <tr class="muted"><td class="left">Non specificati</td><td>{{ t.unspecified }}</td></tr> }
+                        </tbody>
+                    </table>
+                }
+            </div>
+
+            @if (rallies!.rotations.length) {
+                <h2>Side-out e break-point per giocatore in P1</h2>
+                <table class="report-table rotations">
+                    <thead><tr><th>In P1</th><th>Side-out</th><th></th><th>Break-point</th><th></th></tr></thead>
+                    <tbody>
+                        @for (r of rallies!.rotations; track $index) {
+                            <tr>
+                                <td>{{ r.p1 !== null ? '#' + r.p1 : '–' }}</td>
+                                <td>{{ pct(r.sideout.pct) }}</td><td class="muted">{{ r.sideout.won }}/{{ r.sideout.total }}</td>
+                                <td>{{ pct(r.breakpoint.pct) }}</td><td class="muted">{{ r.breakpoint.won }}/{{ r.breakpoint.total }}</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        }
+
+        @if ((serves?.total ?? 0) + (attacks?.total ?? 0) > 0) {
+            <div class="zones-block">
+            <h2>Zone</h2>
+            <div class="charts">
+                @if (serves && serves.total) {
+                    <figure>
+                        <app-zone-chart [stats]="serves"></app-zone-chart>
+                        <figcaption>Battute: {{ serves.withEnd }} su {{ serves.total }} con la zona di arrivo</figcaption>
+                    </figure>
+                }
+                @if (attacks && attacks.total) {
+                    <figure>
+                        <app-zone-chart [stats]="attacks" [attack]="true"></app-zone-chart>
+                        <figcaption>Attacchi: {{ attacks.withEnd }} su {{ attacks.total }} con la zona di arrivo</figcaption>
+                    </figure>
+                }
+                @if (attacks && attacks.starts.length) {
+                    <table class="report-table distribution">
+                        <thead><tr><th>Zona</th><th>Tot</th><th>%</th><th>Kill</th><th>Hit%</th></tr></thead>
+                        <tbody>
+                            @for (s of attacks.starts; track s.zone) {
+                                <tr><td>{{ s.zone }}</td><td>{{ s.tot }}</td><td>{{ pct(s.share) }}</td><td>{{ s.kills }}</td><td>{{ pct(s.hitPct) }}</td></tr>
+                            }
+                        </tbody>
+                        <caption>Distribuzione degli attacchi per zona di partenza</caption>
+                    </table>
+                }
+            </div>
+            <p class="legend">Campo visto da dietro la nostra linea di fondo: noi in basso, avversari in alto · zone DataVolley 1-9 ·
+                punti verdi = vincenti, rossi = errori, blu = altro</p>
+            </div>
+        }
+    </section>
+</div>
+}

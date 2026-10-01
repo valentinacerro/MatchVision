@@ -293,3 +293,29 @@ class TouchZoneTests(APITestCase):
         other = client_with(self.client.post('/auth/register/', {'email': 'z2@example.com', 'password': 'Pallavolo-2026'}, format='json').data['token'])
         self.assertEqual(other.get(f'/match_details/{self.match}/touch_map/').status_code, 404)
         self.assertEqual(other.patch('/touches/update/client/a5/', {'end_zone': 2}, format='json').status_code, 404)
+
+
+class SeedDemoTests(APITestCase):
+    """The demo match is consistent: rallies add up to the set scores, reasons and zones are valid."""
+
+    def test_demo_match(self):
+        from .models import Rally, Set, Touch
+        from .utils import POINT_REASONS
+        cache.clear()
+        token = self.client.post('/auth/register/', {'email': 'demo2@example.com', 'password': 'Pallavolo-2026'}, format='json').data['token']
+        call_command('seed_demo', 'demo2@example.com', stdout=StringIO())
+        match = Match.objects.get(user__username='demo2@example.com')
+        self.assertEqual(len(match.results), 4)
+        for s in Set.objects.filter(match=match):
+            last = Rally.objects.filter(set=s).order_by('number').last()
+            self.assertEqual((last.home_score, last.guest_score), (s.home_score, s.guest_score))
+            for r in Rally.objects.filter(set=s):
+                self.assertIn(r.reason, POINT_REASONS[r.winner])
+        zones = Touch.objects.filter(set__match=match).exclude(end_zone=None).values_list('end_zone', flat=True)
+        self.assertTrue(zones and all(1 <= z <= 9 for z in zones))
+        stats = client_with(token).get(f'/match_details/{match.id}/rally_stats/').data
+        self.assertEqual(stats['points']['home']['unspecified'], 0)
+        # A second run makes another match with the same team
+        call_command('seed_demo', 'demo2@example.com', stdout=StringIO())
+        self.assertEqual(Match.objects.filter(user__username='demo2@example.com').count(), 2)
+        self.assertEqual(Team.objects.filter(user__username='demo2@example.com').count(), 1)

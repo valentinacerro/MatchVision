@@ -80,7 +80,8 @@
                     <button type="button" class="btn" [class.btn-dark]="scope === set.id" [class.btn-outline-dark]="scope !== set.id" (click)="setScope(set.id)">Set {{ set.number }}</button>
                 }
             </div>
-            <button type="button" class="btn btn-success ms-auto" [disabled]="rows.length === 0 && !rallies?.total" (click)="exportCSV()">Esporta CSV</button>
+            <a class="btn btn-outline-primary ms-auto" [routerLink]="['/report', id]">Report PDF</a>
+            <button type="button" class="btn btn-success" [disabled]="rows.length === 0 && !rallies?.total" (click)="exportCSV()">Esporta CSV</button>
         </div>
 
         @if (statsLoading) {

@@ -12,6 +12,7 @@ import { TeamsDetailsComponent } from './pages/details/teams_details/teams_detai
 import { PlayersDetailsComponent } from './pages/details/players_details/players_details.component'
 import { ThanksComponent } from './pages/thanks/thanks'
 import { BenchComponent } from './pages/bench/bench.component'
+import { ReportComponent } from './pages/report/report.component'
 import { authGuard } from './services/authService'
 
 export const routes: Routes = [
@@ -63,6 +64,8 @@ export const routes: Routes = [
     { path: 'player_details/:id', component: PlayersDetailsComponent},
     //    Matches
     { path: 'match_details/:id', component: MatchesDetailsComponent},
+    // Printable report of a match (Stampa / Salva come PDF)
+    { path: 'report/:id', component: ReportComponent },
     //    Teams
     { path: 'team_details/:id', component: TeamsDetailsComponent},
   ]},
