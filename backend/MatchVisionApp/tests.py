@@ -137,3 +137,53 @@ class OwnershipTests(APITestCase):
         call_command('assign_orphans', 'bruno@example.com', stdout=StringIO())
         self.assertEqual([p['name'] for p in self.bruno.get('/players/').data], ['Vecchio'])
         self.assertEqual(len(self.bruno.get('/teams/').data), 1)
+
+
+class OfflineSyncTests(APITestCase):
+    """Data recorded offline is sent again later: every create can be repeated safely."""
+
+    def setUp(self):
+        cache.clear()
+        token = self.client.post('/auth/register/', {'email': 'scout@example.com', 'password': 'Pallavolo-2026'}, format='json').data['token']
+        self.api = client_with(token)
+        self.player = self.api.post('/players/create/', {'name': 'Ada', 'number': 7}, format='json').data['id']
+        self.team = self.api.post('/teams/create/', {'name': 'U16', 'playersList': [self.player]}, format='json').data['id']
+
+    def test_match_and_set_created_once(self):
+        body = {'name': 'Andata', 'team_id': self.team, 'client_id': 'm-1'}
+        first = self.api.post('/matches/create/', body, format='json').data
+        again = self.api.post('/matches/create/', body, format='json').data
+        self.assertEqual(first['id'], again['id'])
+        self.assertEqual(Match.objects.count(), 1)
+        set_body = {'match': first['id'], 'number': 1, 'player_ids': [self.player], 'client_id': 's-1'}
+        res1 = self.api.post('/sets/create/', set_body, format='json')
+        res2 = self.api.post('/sets/create/', set_body, format='json')
+        self.assertEqual((res1.status_code, res2.status_code), (201, 200))
+        self.assertEqual(res1.data['id'], res2.data['id'])
+
+    def test_set_retry_after_match_end_returns_the_set(self):
+        match = self.api.post('/matches/create/', {'name': 'A', 'team_id': self.team}, format='json').data['id']
+        body = {'match': match, 'number': 1, 'client_id': 's-2'}
+        created = self.api.post('/sets/create/', body, format='json').data
+        self.api.put(f'/matches/update/{match}/', {'results': [{'home_score': 25, 'guest_score': 20}], 'live_state': None}, format='json')
+        self.assertEqual(self.api.post('/sets/create/', body, format='json').data['id'], created['id'])
+        self.assertEqual(self.api.post('/sets/create/', {'match': match, 'number': 2, 'client_id': 's-3'}, format='json').status_code, 409)
+
+    def test_delete_touch_by_client_id(self):
+        match = self.api.post('/matches/create/', {'name': 'A', 'team_id': self.team}, format='json').data['id']
+        set_id = self.api.post('/sets/create/', {'match': match, 'number': 1}, format='json').data['id']
+        self.api.post('/touches/create/', {'set': set_id, 'player': self.player, 'fundamental': 'Muro', 'outcome': '+', 'client_id': 't-9'}, format='json')
+        self.assertEqual(self.api.delete('/touches/delete/client/t-9/').status_code, 204)
+        self.assertEqual(self.api.delete('/touches/delete/client/t-9/').status_code, 404)
+        other = client_with(self.client.post('/auth/register/', {'email': 'x@example.com', 'password': 'Pallavolo-2026'}, format='json').data['token'])
+        self.api.post('/touches/create/', {'set': set_id, 'player': self.player, 'fundamental': 'Muro', 'outcome': '+', 'client_id': 't-10'}, format='json')
+        self.assertEqual(other.delete('/touches/delete/client/t-10/').status_code, 404)
+
+    def test_live_state_resend_is_accepted(self):
+        # A save whose answer was lost is sent again with the same writer: not a conflict
+        match = self.api.post('/matches/create/', {'name': 'A', 'team_id': self.team}, format='json').data['id']
+        state = {'v': 1, 'writer': 'page-1', 'baseRev': 0}
+        self.assertEqual(self.api.put(f'/matches/update/{match}/', {'live_state': state}, format='json').data['live_state']['rev'], 1)
+        self.assertEqual(self.api.put(f'/matches/update/{match}/', {'live_state': state}, format='json').status_code, 200)
+        other = {'v': 1, 'writer': 'page-2', 'baseRev': 0}
+        self.assertEqual(self.api.put(f'/matches/update/{match}/', {'live_state': other}, format='json').status_code, 409)

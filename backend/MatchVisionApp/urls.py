@@ -45,6 +45,7 @@ urlpatterns = [
     path('touches/player/<int:player_id>/match/<int:match_id>/set/<int:set_id>/', views.getTouchesByPlayerMatchSet),
     path('touches/create/', views.createTouch),
     path('touches/delete/<int:pk>/', views.deleteTouch),
+    path('touches/delete/client/<str:client_id>/', views.deleteTouchByClient),
 
     # Details
     path('player_details/<int:pk>/matches/', views.getPlayersMatches),

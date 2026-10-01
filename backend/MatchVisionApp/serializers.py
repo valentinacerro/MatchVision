@@ -49,7 +49,9 @@ class MatchSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Match
-        fields = ['id', 'name', 'timestamp', 'team', 'team_id', 'results', 'sets_to_win', 'set_points', 'tiebreak_points', 'live_state']
+        fields = ['id', 'name', 'timestamp', 'team', 'team_id', 'results', 'sets_to_win', 'set_points', 'tiebreak_points', 'live_state', 'client_id']
+        # Duplicates are handled in the view, which returns the match already saved
+        extra_kwargs = {'client_id': {'validators': []}}
 
 
 class MatchUpdateSerializer(serializers.ModelSerializer):
@@ -72,7 +74,9 @@ class SetSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Set
-        fields = ['id', 'match', 'number', 'players', 'player_ids', 'home_score', 'guest_score']
+        fields = ['id', 'match', 'number', 'players', 'player_ids', 'home_score', 'guest_score', 'client_id']
+        # Duplicates are handled in the view, which returns the set already saved
+        extra_kwargs = {'client_id': {'validators': []}}
 
 
 class SetUpdateSerializer(serializers.ModelSerializer):

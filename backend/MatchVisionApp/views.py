@@ -194,9 +194,22 @@ def getMatch(request, pk):
 # create new match
 @api_view(['POST'])
 def createMatch(request):
+    # A retry (e.g. a match created offline, sent when the connection is back) returns the match already saved
+    matches = Match.objects.filter(user=request.user)
+    client_id = request.data.get('client_id')
+    existing = matches.filter(client_id=client_id).first() if client_id else None
+    if existing:
+        return Response(MatchSerializer(existing).data)
     serializer = MatchSerializer(data = request.data, context={'request': request})
     if serializer.is_valid():
-        serializer.save(user=request.user)
+        try:
+            with transaction.atomic():
+                serializer.save(user=request.user)
+        except IntegrityError:
+            existing = matches.filter(client_id=serializer.validated_data.get('client_id')).first()
+            if not existing:
+                return Response({"error": "Partita non valida"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(MatchSerializer(existing).data)
         return Response(serializer.data)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -256,13 +269,25 @@ def getSets(request):
 # create new set
 @api_view(['POST'])
 def createSet(request):
+    # A retry of a set already saved returns it instead of creating a second one
+    client_id = request.data.get('client_id')
+    existing = own_sets(request).filter(client_id=client_id).first() if client_id else None
+    if existing:
+        return Response(SetSerializer(existing).data, status=status.HTTP_200_OK)
     match = owned(Match.objects.filter(user=request.user), request.data.get('match'))
     reason = refused_write(match, request)
     if reason:
         return Response({"error": reason}, status=status.HTTP_409_CONFLICT)
     serializer = SetSerializer(data = request.data, context={'request': request})
     if serializer.is_valid():
-        serializer.save()
+        try:
+            with transaction.atomic():
+                serializer.save()
+        except IntegrityError:
+            existing = own_sets(request).filter(client_id=serializer.validated_data.get('client_id')).first()
+            if not existing:
+                return Response({"error": "Set non valido"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(SetSerializer(existing).data, status=status.HTTP_200_OK)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -377,6 +402,18 @@ def getTouchesByPlayerMatchSet(request, player_id, match_id, set_id):
     touches = Touch.objects.filter(player_id=player_id, set__match_id=match_id, set_id=set_id, set__match__user=request.user)
     serializer = TouchSerializer(touches, many=True)
     return Response(serializer.data)
+
+# By client id: a touch recorded offline is undone before the device ever learns its server id
+@api_view(['DELETE'])
+def deleteTouchByClient(request, client_id):
+    touch = Touch.objects.select_related('set__match').filter(client_id=client_id, set__match__user=request.user).first()
+    if touch is None:
+        return Response({"error": "Touch not found"}, status=status.HTTP_404_NOT_FOUND)
+    reason = refused_write(touch.set.match, request)
+    if reason:
+        return Response({"error": reason}, status=status.HTTP_409_CONFLICT)
+    touch.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 @api_view(['DELETE'])
 def deleteTouch(request, pk):
