@@ -1,6 +1,6 @@
 import {
-    afterPoint, DEFAULT_FORMAT, isDecidingSet, matchWinner, pointsToWinSet, serverIndex,
-    setWinner, sideSwitchDue, suggestFundamental, terminalWinner,
+    afterPoint, DEFAULT_FORMAT, isDecidingSet, matchWinner, POINT_REASONS, pointReason, pointsToWinSet, reasonChoices,
+    serverIndex, setWinner, sideSwitchDue, suggestFundamental, terminalWinner, touchReason,
 } from './rallyEngine'
 
 describe('rallyEngine', () => {
@@ -92,6 +92,28 @@ describe('rallyEngine', () => {
         it('suggests the attack after the first touch in the solo profile', () => {
             expect(suggestFundamental('guests', ['Ricezione'], true)).toBe('Attacco')
             expect(suggestFundamental('home', ['Battuta'], true)).toBe('Attacco')
+        })
+    })
+
+    describe('point reasons', () => {
+        it('follow from the touch that ended the rally', () => {
+            expect(touchReason('Battuta', '++')).toBe('serve')
+            expect(touchReason('Attacco', '++')).toBe('attack')
+            expect(touchReason('Ricezione', '— —')).toBe('reception_error')
+            expect(touchReason('Ricezione', '++')).toBe('')
+        })
+        it('agree with the winner of the point', () => {
+            for (const f of ['Battuta', 'Ricezione', 'Alzata', 'Attacco', 'Muro', 'Difesa'])
+                for (const g of ['++', '— —']) {
+                    const code = touchReason(f, g)
+                    if (code) expect(pointReason(code)?.team).toBe(terminalWinner(f, g) as any)
+                }
+        })
+        it('offer four choices for each team, opponent errors for our points', () => {
+            expect(reasonChoices('home').map(r => r.short)).toEqual(['Battuta', 'Attacco', 'Fallo', 'Altro'])
+            expect(reasonChoices('home').every(r => r.gift)).toBeTrue()
+            expect(reasonChoices('guests').map(r => r.short)).toEqual(['Ace', 'Attacco', 'Muro', 'Altro'])
+            expect(new Set(POINT_REASONS.map(r => r.code)).size).toBe(POINT_REASONS.length)
         })
     })
 })

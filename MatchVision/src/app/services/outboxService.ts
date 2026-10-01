@@ -9,7 +9,7 @@ import { AuthService } from './authService'
 // a match scouted without signal reaches the server later, even if the game page is closed.
 
 export type OpKind =
-    | 'match' | 'touch' | 'touchDelete' | 'rally' | 'rallyDelete' | 'event'
+    | 'match' | 'touch' | 'touchDelete' | 'rally' | 'rallyUpdate' | 'rallyDelete' | 'event'
     | 'set' | 'setScore' | 'setDelete' | 'state' | 'results'
 
 export interface Op {
@@ -39,7 +39,7 @@ const KEY = 'matchvision.outbox.' // + user id
 const REQUEST_TIMEOUT_MS = 15000
 const RETRY_MS = [1000, 2000, 5000, 10000, 30000]
 const CREATES: OpKind[] = ['touch', 'rally', 'event']
-const DELETES: OpKind[] = ['touchDelete', 'rallyDelete', 'setDelete'] // 404 = already gone
+const DELETES: OpKind[] = ['touchDelete', 'rallyDelete', 'setDelete', 'rallyUpdate'] // 404 = already gone
 
 function newId(): string {
     return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -126,6 +126,19 @@ export class OutboxService {
     removeRally(match: number, clientId: string, writer: string): void {
         if (!this.cancel(o => o.kind === 'rally' && o.body.client_id === clientId))
             this.enqueue('rallyDelete', match, { client_id: clientId }, writer)
+    }
+
+    // The reason of a point, chosen after it: goes into the rally if it is still waiting
+    updateRally(match: number, clientId: string, patch: { reason: string; cause: string }, writer: string): void {
+        const waiting = this.data.ops.find(o => o.kind === 'rally' && o.body.client_id === clientId && o.id !== this.inFlight)
+        if (!waiting) {
+            this.enqueue('rallyUpdate', match, { client_id: clientId, ...patch }, writer)
+            return
+        }
+        this.change(d => {
+            const op = d.ops.find(o => o.id === waiting.id)
+            if (op) op.body = { ...op.body, ...patch }
+        })
     }
 
     // A set opened but never played; one created offline and still waiting is dropped with its score
@@ -281,6 +294,8 @@ export class OutboxService {
                 ? this.http.delete(`${this.apiUrl}/touches/delete/client/${encodeURIComponent(b.client_id)}/`, { params })
                 : this.http.delete(`${this.apiUrl}/touches/delete/${b.id}/`, { params })
             case 'rally': return this.http.post(`${this.apiUrl}/rallies/create/`, { ...b, set: r(b.set), writer })
+            case 'rallyUpdate': return this.http.patch(`${this.apiUrl}/rallies/update/${encodeURIComponent(b.client_id)}/`,
+                { reason: b.reason, cause: b.cause, writer })
             case 'rallyDelete': return this.http.delete(`${this.apiUrl}/rallies/delete/${encodeURIComponent(b.client_id)}/`, { params })
             case 'event': return this.http.post(`${this.apiUrl}/events/create/`, { ...b, set: r(b.set), writer })
             case 'set': {

@@ -24,6 +24,14 @@ export interface KpiRow {
 
 export interface Share { won: number; total: number; pct: number | null }
 
+// Points of one team by reason (codes in POINT_REASONS); gifted = from errors and penalties of the other team
+export interface TeamPoints {
+    total: number
+    gifted: number
+    unspecified: number
+    reasons: Record<string, number>
+}
+
 // Side-out (points won on the opponent's serve) and break-point (on our serve), overall and per rotation
 export interface RallyStats {
     total: number
@@ -31,6 +39,7 @@ export interface RallyStats {
     breakpoint: Share
     // rotation is null in match totals, which are grouped by the player in P1 instead
     rotations: { rotation: number | null; p1: number | null; sideout: Share; breakpoint: Share }[]
+    points?: { home: TeamPoints; guests: TeamPoints }
 }
 
 @Injectable({

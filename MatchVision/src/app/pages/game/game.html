@@ -119,6 +119,32 @@
                     [class.selected]="selectedOnCourt?.id === libero.id" [disabled]="liberoAuto" (click)="selectPlayer(libero)">{{ libero.number }}</button>}
         </div>
 
+        <div class="pad-column">
+        <!-- The last point and why it was won; after a "+" the scout can say what happened.
+             Always the same height, so nothing moves under the scout's fingers -->
+        <div class="last-point" role="group" aria-label="Ultimo punto">
+            @if (lastPoint; as last) {
+                <div class="last-point-title">
+                    Punto <strong>{{ last.winner === 'home' ? 'CASA' : 'OSPITI' }}</strong>
+                    @if (lastPointChoices.length > 0) {
+                        <span class="text-muted">&nbsp;· {{ last.winner === 'home' ? 'errore avversario in:' : 'loro punto di:' }}</span>
+                    } @else {
+                        <span>&nbsp;· {{ lastPointReason?.long }}</span>
+                    }
+                </div>
+                @if (lastPointChoices.length > 0) {
+                    <div class="reason-buttons">
+                        @for (c of lastPointChoices; track c.code) {
+                            <button type="button" class="btn btn-sm reason-btn" [class.selected]="last.reason === c.code"
+                                [disabled]="locked" (click)="chooseReason(c)">{{ c.short }}</button>
+                        }
+                    </div>
+                }
+            } @else {
+                <div class="last-point-title text-muted">Nessun punto in questo set</div>
+            }
+        </div>
+
         <!-- Always-visible input: player (court) -> fundamental -> grade -->
         <app-touch-pad
             [player]="selectedOnCourt"
@@ -129,6 +155,7 @@
             (touchEntered)="onTouchEntered($event)"
             (statsRequested)="openStats()">
         </app-touch-pad>
+        </div>
 
         </div>
 

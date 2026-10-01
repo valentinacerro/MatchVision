@@ -93,3 +93,54 @@ export function suggestFundamental(serving: Team, rallyFundamentals: string[], s
     }
     return next[last] ?? ''
 }
+
+// ---------------------------------------------------------------------------------------------
+// How a point was won (saved with the rally, see Rally.reason on the server).
+// winner: our points vs theirs. gift: the point came from an error or a penalty of the other team.
+// choice: picked by the scout after a "+" (the others follow from our touch or from a card).
+// ---------------------------------------------------------------------------------------------
+export interface PointReason { code: string; team: Team; gift: boolean; choice: boolean; short: string; long: string }
+
+export const POINT_REASONS: PointReason[] = [
+    { code: 'serve', team: 'home', gift: false, choice: false, short: 'Ace', long: 'Ace' },
+    { code: 'attack', team: 'home', gift: false, choice: false, short: 'Attacco', long: 'Attacco vincente' },
+    { code: 'block', team: 'home', gift: false, choice: false, short: 'Muro', long: 'Muro vincente' },
+    { code: 'opp_serve_error', team: 'home', gift: true, choice: true, short: 'Battuta', long: 'Errore avversario in battuta' },
+    { code: 'opp_attack_error', team: 'home', gift: true, choice: true, short: 'Attacco', long: 'Errore avversario in attacco' },
+    { code: 'opp_fault', team: 'home', gift: true, choice: true, short: 'Fallo', long: 'Fallo avversario' },
+    { code: 'opp_error', team: 'home', gift: true, choice: true, short: 'Altro', long: 'Errore avversario' },
+    { code: 'opp_penalty', team: 'home', gift: true, choice: false, short: 'Cartellino rosso', long: 'Cartellino rosso avversario' },
+    { code: 'opp_ace', team: 'guests', gift: false, choice: true, short: 'Ace', long: 'Ace avversario' },
+    { code: 'opp_attack', team: 'guests', gift: false, choice: true, short: 'Attacco', long: 'Attacco avversario' },
+    { code: 'opp_block', team: 'guests', gift: false, choice: true, short: 'Muro', long: 'Muro avversario' },
+    { code: 'opp_point', team: 'guests', gift: false, choice: true, short: 'Altro', long: 'Punto avversario' },
+    { code: 'serve_error', team: 'guests', gift: true, choice: false, short: 'Battuta', long: 'Nostro errore in battuta' },
+    { code: 'reception_error', team: 'guests', gift: true, choice: false, short: 'Ricezione', long: 'Nostro errore in ricezione' },
+    { code: 'set_error', team: 'guests', gift: true, choice: false, short: 'Alzata', long: 'Nostro errore in alzata' },
+    { code: 'attack_error', team: 'guests', gift: true, choice: false, short: 'Attacco', long: 'Nostro errore in attacco' },
+    { code: 'block_error', team: 'guests', gift: true, choice: false, short: 'Muro', long: 'Nostro errore a muro' },
+    { code: 'defense_error', team: 'guests', gift: true, choice: false, short: 'Difesa', long: 'Nostro errore in difesa' },
+    { code: 'penalty', team: 'guests', gift: true, choice: false, short: 'Cartellino rosso', long: 'Nostro cartellino rosso' },
+]
+
+export function pointReason(code: string | undefined): PointReason | undefined {
+    return POINT_REASONS.find(r => r.code === code)
+}
+
+// What the scout can pick after a "+" for that team
+export function reasonChoices(team: Team): PointReason[] {
+    return POINT_REASONS.filter(r => r.team === team && r.choice)
+}
+
+const TOUCH_WINNERS: Record<string, string> = { Battuta: 'serve', Attacco: 'attack', Muro: 'block' }
+const TOUCH_ERRORS: Record<string, string> = {
+    Battuta: 'serve_error', Ricezione: 'reception_error', Alzata: 'set_error',
+    Attacco: 'attack_error', Muro: 'block_error', Difesa: 'defense_error',
+}
+
+// Reason of a point ended by one of our touches ('' if the touch does not end the rally)
+export function touchReason(fundamental: string, outcome: string): string {
+    if (outcome === '— —') return TOUCH_ERRORS[fundamental] ?? ''
+    if (outcome === '++') return TOUCH_WINNERS[fundamental] ?? ''
+    return ''
+}

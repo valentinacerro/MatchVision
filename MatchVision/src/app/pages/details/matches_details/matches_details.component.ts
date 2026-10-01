@@ -7,7 +7,7 @@ import { Set } from '../../../Models/Set'
 import { MatchesService } from '../../../services/matchesService'
 import { GlobalService } from '../../../services/globalService'
 import { KpiRow, RallyStats, StatsService } from '../../../services/statsService'
-import { KpiViewComponent } from '../../shared/kpiView/kpiView.component'
+import { KpiViewComponent, pointsView } from '../../shared/kpiView/kpiView.component'
 
 @Component({
     selector: 'app-matches_details',
@@ -153,6 +153,20 @@ export class MatchesDetailsComponent implements OnInit{
             lines.push(row('Totale', null, this.rallies.sideout, this.rallies.breakpoint))
             for (const r of this.rallies.rotations)
                 lines.push(row(r.rotation !== null ? `R${r.rotation}` : '–', r.p1 !== null ? `#${r.p1}` : null, r.sideout, r.breakpoint))
+            // How the points were won, team by team
+            const points = pointsView(this.rallies)
+            if (points.length) {
+                lines.push('')
+                lines.push(['Punti', 'Voce', 'Numero'].map(label).join(';'))
+                for (const t of points) {
+                    lines.push([`Punti ${t.label}`, 'Totale', t.total].map(v => this.cell(v)).join(';'))
+                    for (const g of t.groups) {
+                        lines.push([`Punti ${t.label}`, g.label, g.total].map(v => this.cell(v)).join(';'))
+                        for (const i of g.items) lines.push([`Punti ${t.label}`, `${g.label}: ${i.label}`, i.count].map(v => this.cell(v)).join(';'))
+                    }
+                    if (t.unspecified) lines.push([`Punti ${t.label}`, 'Non specificati', t.unspecified].map(v => this.cell(v)).join(';'))
+                }
+            }
         }
         // BOM so Excel reads the accents correctly
         const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' })

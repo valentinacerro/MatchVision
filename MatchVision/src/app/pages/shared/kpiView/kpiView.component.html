@@ -14,6 +14,14 @@
                 <div class="rally-value">{{ pct(rallies!.breakpoint.pct) }}</div>
                 <div class="rally-count">{{ rallies!.breakpoint.won }}/{{ rallies!.breakpoint.total }} in battuta</div>
             </div>
+            @if (rallies!.points; as p) {
+                <!-- Points given away: by the opponent (their errors) and by us -->
+                <div class="rally-box">
+                    <div class="rally-label">Punti regalati</div>
+                    <div class="rally-value">{{ p.home.gifted }} – {{ p.guests.gifted }}</div>
+                    <div class="rally-count">dall'avversario – da noi</div>
+                </div>
+            }
         </div>
     }
 
@@ -21,13 +29,37 @@
         @for (f of availableFundamentals; track f) {
             <button type="button" class="btn view-btn" [class.selected]="view === f" (click)="view = f">{{ f }}</button>
         }
+        @if (rallies?.total) {
+            <button type="button" class="btn view-btn" [class.selected]="view === POINTS" (click)="view = POINTS">{{ POINTS }}</button>
+        }
         @if (rallies?.rotations?.length) {
             <button type="button" class="btn view-btn" [class.selected]="view === ROTATIONS" (click)="view = ROTATIONS">{{ ROTATIONS }}</button>
         }
     </div>
 
     <div class="table-responsive">
-        @if (view === ROTATIONS && rallies) {
+        @if (view === POINTS && rallies) {
+            <div class="points-view">
+                @for (t of points; track t.team) {
+                    <table class="table table-sm align-middle kpi-table points-table">
+                        <thead>
+                            <tr><th>Punti {{ t.label }}</th><th class="text-end">{{ t.total }}</th></tr>
+                        </thead>
+                        <tbody>
+                            @for (g of t.groups; track g.label) {
+                                <tr class="group-row"><td>{{ g.label }}</td><td class="text-end">{{ g.total }}</td></tr>
+                                @for (i of g.items; track i.label) {
+                                    <tr><td class="ps-4">{{ i.label }}</td><td class="text-end">{{ i.count }}</td></tr>
+                                }
+                            }
+                            @if (t.unspecified > 0) {
+                                <tr class="text-muted"><td>Non specificati</td><td class="text-end">{{ t.unspecified }}</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        } @else if (view === ROTATIONS && rallies) {
             <table class="table table-sm align-middle text-center kpi-table">
                 <thead>
                     <tr><th>Rotazione</th><th>In P1</th><th>Side-out</th><th></th><th>Break-point</th><th></th></tr>
@@ -77,5 +109,6 @@
 }
 <p class="legend mb-0">
     Positività = (++ + +) / tot · Efficienza = (++ − — —) / tot · Errori = — — / tot ·
-    Side-out = punti vinti sul servizio avversario · Break-point = punti vinti sul proprio servizio
+    Side-out = punti vinti sul servizio avversario · Break-point = punti vinti sul proprio servizio ·
+    Punti regalati = punti nati da errori e cartellini dell'altra squadra
 </p>

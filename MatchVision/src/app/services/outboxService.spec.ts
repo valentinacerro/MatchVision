@@ -172,4 +172,20 @@ describe('OutboxService', () => {
         state.flush({ live_state: { rev: 1 } })
         expect(events.filter(e => e.type === 'resolved').length).toBe(2)
     })
+
+    it('puts the reason of a point into the rally, or updates it once sent', () => {
+        outbox.enqueue('rally', 3, { set: 10, client_id: 'r1', reason: '' }, 'w')
+        outbox.enqueue('rally', 3, { set: 10, client_id: 'r2', reason: '' }, 'w')
+        outbox.updateRally(3, 'r1', { reason: 'opp_ace', cause: 'Ace avversario' }, 'w')  // r1 is on its way
+        outbox.updateRally(3, 'r2', { reason: 'opp_block', cause: 'Muro avversario' }, 'w') // r2 still waits
+        backend.expectOne(`${API_URL}/rallies/create/`).flush({})
+        const r2 = backend.expectOne(`${API_URL}/rallies/create/`)
+        expect(r2.request.body.reason).toBe('opp_block')
+        r2.flush({})
+        const patch = backend.expectOne(`${API_URL}/rallies/update/r1/`)
+        expect(patch.request.method).toBe('PATCH')
+        expect(patch.request.body).toEqual({ reason: 'opp_ace', cause: 'Ace avversario', writer: 'w' })
+        patch.flush({})
+        expect(outbox.pending()).toBe(0)
+    })
 })

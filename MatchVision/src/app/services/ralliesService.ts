@@ -14,6 +14,7 @@ export interface Rally {
     home_score: number
     guest_score: number
     cause: string
+    reason?: string // how the point was won (see POINT_REASONS in the rally engine)
     client_id: string
     writer?: string // the page that owns the match
 }

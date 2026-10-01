@@ -21,8 +21,8 @@ import { GameEvent } from '../../services/eventsService'
 import { OutboxEvent, OutboxService } from '../../services/outboxService'
 import { forkJoin, Subscription, switchMap } from 'rxjs'
 import {
-    afterPoint, DEFAULT_FORMAT, isDecidingSet, MatchFormat, matchWinner, serverIndex, setsWon, setWinner,
-    sideSwitchDue, suggestFundamental, Team, terminalWinner,
+    afterPoint, DEFAULT_FORMAT, isDecidingSet, MatchFormat, matchWinner, pointReason, PointReason, reasonChoices, serverIndex,
+    setsWon, setWinner, sideSwitchDue, suggestFundamental, Team, terminalWinner, touchReason,
 } from './rallyEngine'
 
 // A touch as tracked on this page: tap order and rally are fixed when the scout taps.
@@ -68,7 +68,7 @@ interface LiveState {
     scoreEvents: ScoreEvent[]
     rallyTouchIds: string[] // client ids of the touches of the rally in progress
     order: string[]         // client ids of this set's touches in tap order
-    rallyLog: { id: string; winner: Team }[] // rallies of this set, oldest first
+    rallyLog: RallyEntry[] // rallies of this set, oldest first
     subs: Substitution[]
     // Saved by earlier versions of this page (now everything waits in the outbox): sent again on resume
     unsent?: TrackedTouch[]
@@ -88,6 +88,9 @@ interface LocalState extends LiveState {
     set?: Set | null
     touches?: TrackedTouch[]
 }
+
+// A point of this set: reason '' until known (a "+" without a reason)
+interface RallyEntry { id: string; winner: Team; reason?: string }
 
 // A substitution of this set: the starter left for the sub; returned once the starter re-entered
 interface Substitution { starter: number; sub: number; returned: boolean }
@@ -165,7 +168,7 @@ export class GameComponent implements OnInit, OnDestroy{
     // Score changes of this set, newest last: undoing a touch takes back its point only if it is the latest change
     private scoreEvents: ScoreEvent[] = []
     // Every point is also saved as a rally (serve, rotation, winner) for side-out / break-point stats
-    private rallyLog: { id: string; winner: Team }[] = []
+    rallyLog: RallyEntry[] = []
     // Substitutions of this set (FIVB 15.6: a starter leaves once and re-enters once, for his substitute)
     subs: Substitution[] = []
     // Starters the libero replaces in the back row; empty = libero managed by hand
@@ -617,9 +620,36 @@ export class GameComponent implements OnInit, OnDestroy{
         this.globalService.resetAll()
     }
 
-    // "+" = rally won by that team: serve and rotation follow the rules
+    // "+" = rally won by that team: serve and rotation follow the rules. Why it was won can be
+    // picked in the "Ultimo punto" box until the next point
     increaseScore(team: Team) {
         this.awardPoint(team)
+    }
+
+    get lastPoint(): RallyEntry | null {
+        return this.rallyLog.at(-1) ?? null
+    }
+
+    get lastPointReason(): PointReason | undefined {
+        return pointReason(this.lastPoint?.reason)
+    }
+
+    // The last point has no reason from a touch or a card: the scout can say what happened
+    get lastPointChoices(): PointReason[] {
+        const last = this.lastPoint
+        if (!last || (this.lastPointReason && !this.lastPointReason.choice)) return []
+        return reasonChoices(last.winner)
+    }
+
+    chooseReason(choice: PointReason): void {
+        const last = this.lastPoint
+        const id = this.matchId
+        if (!last || !id || this.locked || choice.team !== last.winner) return
+        const reason = last.reason === choice.code ? '' : choice.code // a second tap takes it back
+        const cause = reason ? choice.long : ''
+        if (!this.record(() => this.outbox.updateRally(id, last.id, { reason, cause }, this.writer))) return
+        this.rallyLog = [...this.rallyLog.slice(0, -1), { ...last, reason }]
+        this.saveState()
     }
 
     // "−" = correction. If the latest score change was a point for that team, it is taken back
@@ -655,15 +685,15 @@ export class GameComponent implements OnInit, OnDestroy{
         this.scoreEvents = [...this.scoreEvents.slice(-49), { cause, prev: this.snapshot() }]
     }
 
-    private awardPoint(winner: Team, cause: string = '', causeId: string | null = null): void {
+    private awardPoint(winner: Team, cause: string = '', causeId: string | null = null, reason: string = ''): void {
         const before = { serving: this.serving, rotation: this.rotation }
         this.recordEvent(causeId)
         this.scoreEvents[this.scoreEvents.length - 1].winner = winner
         this.score[winner]++
-        const rally = this.newRally(before, winner, cause)
+        const rally = this.newRally(before, winner, cause, reason)
         if (rally) {
             this.scoreEvents[this.scoreEvents.length - 1].rallyId = rally.client_id
-            this.rallyLog = [...this.rallyLog, { id: rally.client_id, winner }]
+            this.rallyLog = [...this.rallyLog, { id: rally.client_id, winner, reason }]
             this.sendRally(rally)
         }
         const next = afterPoint(before, winner)
@@ -687,7 +717,7 @@ export class GameComponent implements OnInit, OnDestroy{
         }
     }
 
-    private newRally(before: { serving: Team; rotation: number }, winner: Team, cause: string): Rally | null {
+    private newRally(before: { serving: Team; rotation: number }, winner: Team, cause: string, reason: string): Rally | null {
         const set = this.globalService.currentSet()
         if (!set?.id) return null
         const p1 = this.starting_players.length === 6 ? this.starting_players[serverIndex(before.rotation)] : null
@@ -701,6 +731,7 @@ export class GameComponent implements OnInit, OnDestroy{
             home_score: this.score.home,
             guest_score: this.score.guests,
             cause: cause.slice(0, 40),
+            reason,
             client_id: newClientId(),
         }
     }
@@ -934,7 +965,7 @@ export class GameComponent implements OnInit, OnDestroy{
         if (!clientId) return
         const winner = terminalWinner(event.fundamental, event.outcome)
         if (winner) {
-            this.awardPoint(winner, `${event.fundamental} ${event.outcome}`, clientId)
+            this.awardPoint(winner, `${event.fundamental} ${event.outcome}`, clientId, touchReason(event.fundamental, event.outcome))
         } else {
             this.updateSuggestion()
         }
@@ -1108,7 +1139,7 @@ export class GameComponent implements OnInit, OnDestroy{
                 // FIVB 21.3: a penalty gives a point and the serve to the opponent of the sanctioned team
                 if (team === 'home') this.r_card_counter++
                 this.recordGameEvent('RED_CARD', {}, team)
-                this.awardPoint(team === 'home' ? 'guests' : 'home', `Cartellino rosso ${who}`)
+                this.awardPoint(team === 'home' ? 'guests' : 'home', `Cartellino rosso ${who}`, null, team === 'home' ? 'penalty' : 'opp_penalty')
                 break
             case EventType.DOUBLE_FAULT:
                 this.cancelCurrentRally()

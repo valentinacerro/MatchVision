@@ -38,6 +38,52 @@ body {
     margin: 0;
 }
 
+// The pad and, above it, the last point with its reason
+.pad-column {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch; // the box is as wide as the pad (wider when the tablet is upright)
+    gap: 0.5rem;
+}
+
+.last-point {
+    width: 100%;
+    height: 4.6rem; // fixed: picking a reason never moves the pad
+    padding: 0.4rem 0.6rem;
+    border-radius: 12px;
+    background-color: white;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+    font-size: 0.95rem;
+}
+
+.last-point-title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.reason-buttons {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.3rem;
+    margin-top: 0.3rem;
+}
+
+.reason-btn {
+    --bs-btn-border-color: #6c757d;
+    --bs-btn-hover-border-color: #6c757d;
+    min-height: 2.3rem;
+    padding: 0;
+    border-width: 2px;
+    font-weight: 600;
+}
+
+.reason-btn.selected {
+    background-color: #212529;
+    border-color: #212529;
+    color: white;
+}
+
 // Serving team: tap the ball next to CASA / OSPITI to choose or correct who serves
 .serve-toggle {
     width: 2.6rem;
@@ -299,7 +345,7 @@ body {
     }
 
     .play-area .court-container {
-        width: min(92vw, calc((100vh - 44rem) * 2));
+        width: min(92vw, calc((100vh - 49rem) * 2));
     }
 
     .top-bar {
