@@ -29,6 +29,26 @@ npx ng serve
 
 L'app chiama l'API sulla porta 8001 dello stesso host da cui è aperta.
 
+## Account
+
+Ogni utente si registra dall'app (email e password) e vede solo i propri giocatori, squadre e partite.
+L'accesso vale per dispositivo: uscire dal telefono non chiude la sessione sul tablet che sta facendo lo scout.
+Una sessione non usata per 60 giorni scade.
+
+I dati creati prima del login non hanno un proprietario. Per assegnarli al tuo account (dopo esserti registrato):
+
+```bash
+cd backend
+python manage.py assign_orphans tua@email.it
+```
+
+## Test
+
+```bash
+cd backend && python manage.py test
+cd MatchVision && npx ng test --watch=false
+```
+
 ## Uso da tablet sulla stessa rete
 
 Con l'IP del computer (es. `192.168.1.20`):

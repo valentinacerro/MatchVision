@@ -2,6 +2,12 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    # Account
+    path('auth/register/', views.register),
+    path('auth/login/', views.login),
+    path('auth/logout/', views.logout),
+    path('auth/me/', views.me),
+
     # Players
     path('players/', views.getPlayers),
     path('players/<int:pk>/', views.getPlayer),
@@ -36,7 +42,7 @@ urlpatterns = [
 
     # Touches
     path('touches/player/<int:player_id>/match/<int:match_id>/', views.getTouchesByPlayerMatch),
-    path('touches/player/<int:player_id>/match/<int:match_id>/set/<int:set_id>/', views.getTouchesByPlayerMatch),
+    path('touches/player/<int:player_id>/match/<int:match_id>/set/<int:set_id>/', views.getTouchesByPlayerMatchSet),
     path('touches/create/', views.createTouch),
     path('touches/delete/<int:pk>/', views.deleteTouch),
 

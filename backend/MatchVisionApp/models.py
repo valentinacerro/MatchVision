@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.utils import timezone
 from django.db import models
 
@@ -12,7 +13,7 @@ from django.db import models
 
 
 class Player(models.Model):
-    user = models.ForeignKey('User', on_delete=models.CASCADE, related_name='players', null=True, blank=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='players', null=True, blank=True)
     name = models.CharField(max_length=100, null=True, blank=True, verbose_name="Nome")
     surname = models.CharField(max_length=100, null=True, blank=True, verbose_name="Cognome")
     number = models.PositiveIntegerField(null=True, blank=True, db_index=True, verbose_name="Numero")
@@ -79,7 +80,7 @@ class Set(models.Model):
 
 
 class Match(models.Model):
-    user = models.ForeignKey('User', on_delete=models.CASCADE, related_name='matches', null=True, blank=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='matches', null=True, blank=True)
     name = models.CharField(max_length=100, verbose_name="Nome partita")
     timestamp = models.DateTimeField(default=timezone.now)
     team = models.ForeignKey('Team', on_delete=models.CASCADE, related_name='matches')
@@ -102,7 +103,7 @@ class Match(models.Model):
 
 
 class Team(models.Model):
-    user = models.ForeignKey('User', on_delete=models.CASCADE, related_name='teams', null=True, blank=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='teams', null=True, blank=True)
     name = models.CharField(max_length=100, verbose_name="Nome squadra")
     playersList = models.ManyToManyField(Player, related_name='teams', blank=True)
 
@@ -175,11 +176,12 @@ class Rally(models.Model):
         return f"Rally {self.number} ({self.home_score}-{self.guest_score}, vince {self.winner})"
 
 
-class User(models.Model):
-    email = models.EmailField(max_length=100)
-    password = models.CharField(max_length=100)
-    name = models.CharField(max_length=100)    
-    surname = models.CharField(max_length=100)
-    # matches = models.ManyToManyField(Match, related_name='users')
-    # players = models.ManyToManyField(Player, related_name='users')
-    # teams = models.ManyToManyField(Team, related_name='users')
+class AuthToken(models.Model):
+    """A login on one device. Only the SHA-256 of the key is stored."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='auth_tokens')
+    digest = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"Token di {self.user} ({self.created_at:%Y-%m-%d})"

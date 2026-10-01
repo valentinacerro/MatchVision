@@ -61,6 +61,13 @@ MIDDLEWARE = [
 
 CORS_ALLOW_ALL_ORIGINS = True
 
+# Every API call needs a logged-in user (see MatchVisionApp/auth.py), except login and register
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': ['MatchVisionApp.auth.TokenAuthentication'],
+    'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'],
+    'DEFAULT_THROTTLE_RATES': {'auth': '10/min'},
+}
+
 
 ROOT_URLCONF = 'MatchVision.urls'
 
@@ -119,7 +126,8 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+# Italian: validation messages (e.g. password too short) reach the UI as they are
+LANGUAGE_CODE = 'it'
 
 TIME_ZONE = 'UTC'
 
