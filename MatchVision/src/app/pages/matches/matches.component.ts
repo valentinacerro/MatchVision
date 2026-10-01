@@ -1,4 +1,4 @@
-import { Component, OnInit, ViewChild } from '@angular/core'
+import { Component, OnDestroy, OnInit, ViewChild } from '@angular/core'
 import { RouterModule } from '@angular/router'
 import { MatchesService } from '../../services/matchesService'
 import { NewMatchModalComponent } from './newMatchModal/newMatchModal.component';
@@ -6,6 +6,8 @@ import { Match } from '../../Models/Match';
 import { CommonModule } from '@angular/common'; 
 import { FormsModule } from '@angular/forms';
 import { GlobalService } from '../../services/globalService';
+import { OutboxService } from '../../services/outboxService';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-matches',
@@ -20,9 +22,11 @@ import { GlobalService } from '../../services/globalService';
   styleUrls: ['./matches.component.scss']
 })
 
-export class MatchesComponent implements OnInit{
+export class MatchesComponent implements OnInit, OnDestroy{
 
-    constructor(private matchesService: MatchesService, public globalService: GlobalService) {}
+    constructor(private matchesService: MatchesService, public globalService: GlobalService, private outbox: OutboxService) {}
+
+    private synced: Subscription | null = null
     
     @ViewChild(NewMatchModalComponent) newMatchModal!: NewMatchModalComponent
 
@@ -33,6 +37,12 @@ export class MatchesComponent implements OnInit{
     
     ngOnInit(): void { 
         this.globalService.loadMatches()
+        // A match created offline reached the server: the list shows it with its server id
+        this.synced = this.outbox.events.subscribe(e => { if (e.type === 'resolved') this.globalService.loadMatches() })
+    }
+
+    ngOnDestroy(): void {
+        this.synced?.unsubscribe()
     }
 
     openNewMatchModal(){
@@ -60,9 +70,10 @@ export class MatchesComponent implements OnInit{
 
     // To filter matches
     get filteredMatches(): Match[] {
+        const all = [...this.outbox.localMatches(), ...this.globalService.allMatches()]
         if (!this.searchText) 
-            return this.globalService.allMatches()
-        return this.globalService.allMatches().filter(m =>
+            return all
+        return all.filter(m =>
         m.name.toLowerCase().includes(this.searchText.toLowerCase()) ||
         this.globalService.transformDateFormat(m.timestamp).includes(this.searchText.toLowerCase())
         );

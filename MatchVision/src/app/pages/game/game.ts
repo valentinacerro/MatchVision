@@ -354,6 +354,15 @@ export class GameComponent implements OnInit, OnDestroy{
         }
     }
 
+    private moveLocalState(from: number, to: number): void {
+        try {
+            const raw = localStorage.getItem(STATE_KEY + from)
+            if (raw === null) return
+            localStorage.setItem(STATE_KEY + to, raw)
+            localStorage.removeItem(STATE_KEY + from)
+        } catch {}
+    }
+
     private readLocalState(id: number): LocalState | null {
         try {
             const raw = localStorage.getItem(STATE_KEY + id)
@@ -362,6 +371,13 @@ export class GameComponent implements OnInit, OnDestroy{
     }
 
     private resume(id: number): void {
+        // A match created offline that has reached the server meanwhile: open it by its server id
+        const real = this.outbox.resolve(id)
+        if (real !== id) {
+            this.moveLocalState(id, real)
+            this.router.navigate(['/game', real], { replaceUrl: true })
+            id = real
+        }
         this.resuming = true
         const local = this.readLocalState(id)
         if (this.outbox.hasResults(id)) {
@@ -569,6 +585,13 @@ export class GameComponent implements OnInit, OnDestroy{
     private onOutboxEvent(e: OutboxEvent): void {
         const id = this.matchId
         if (e.type === 'resolved') {
+            // The match created offline is on the server: same page, server id in the address
+            const match = this.globalService.currentMatch()
+            if (match?.id === e.temp) {
+                this.moveLocalState(e.temp, e.id)
+                this.globalService.currentMatch.set({ ...match, id: e.id })
+                this.router.navigate(['/game', e.id], { replaceUrl: true })
+            }
             // A set created offline got its server id: everything here points to it from now on
             const set = this.globalService.currentSet()
             if (set?.id === e.temp) this.globalService.currentSet.set({ ...set, id: e.id })

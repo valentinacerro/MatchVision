@@ -9,7 +9,7 @@ import { AuthService } from './authService'
 // a match scouted without signal reaches the server later, even if the game page is closed.
 
 export type OpKind =
-    | 'touch' | 'touchDelete' | 'rally' | 'rallyDelete' | 'event'
+    | 'match' | 'touch' | 'touchDelete' | 'rally' | 'rallyDelete' | 'event'
     | 'set' | 'setScore' | 'setDelete' | 'state' | 'results'
 
 export interface Op {
@@ -22,7 +22,7 @@ export interface Op {
 }
 
 export type OutboxEvent =
-    | { type: 'resolved'; temp: number; id: number }        // a set created offline got its server id
+    | { type: 'resolved'; temp: number; id: number }        // a match or set created offline got its server id
     | { type: 'blocked'; match: number; reason: string }    // another device took control of the match
     | { type: 'rejected'; op: Op; status: number }          // refused by the server for good
     | { type: 'sent'; op: Op; response: any }
@@ -140,6 +140,15 @@ export class OutboxService {
         return this.data.ops.filter(o => this.same(o.match, match)).length
     }
 
+    // Matches created on this device and not on the server yet (temporary id)
+    localMatches(): any[] {
+        this.version() // read by templates: they follow the queue
+        return this.data.ops.filter(o => o.kind === 'match').map(o => {
+            const { temp, ...match } = o.body
+            return { ...match, id: temp, local: true }
+        })
+    }
+
     // The end of this match is recorded but not on the server yet
     hasResults(match: number): boolean {
         return this.data.ops.some(o => o.kind === 'results' && this.same(o.match, match))
@@ -212,11 +221,11 @@ export class OutboxService {
         const key = String(this.resolve(op.match))
         this.change(d => {
             d.ops = d.ops.filter(o => o.id !== op.id)
-            if (op.kind === 'set' && res?.id) d.ids[String(op.body.temp)] = res.id
+            if ((op.kind === 'set' || op.kind === 'match') && res?.id) d.ids[String(op.body.temp)] = res.id
             if (op.kind === 'state') d.revs[key] = res?.live_state?.rev ?? (d.revs[key] ?? 0) + 1
             if (op.kind === 'results') delete d.revs[key]
         })
-        if (op.kind === 'set' && res?.id) this.events.next({ type: 'resolved', temp: op.body.temp, id: res.id })
+        if ((op.kind === 'set' || op.kind === 'match') && res?.id) this.events.next({ type: 'resolved', temp: op.body.temp, id: res.id })
         this.events.next({ type: 'sent', op, response: res })
         this.kick()
     }
@@ -263,6 +272,10 @@ export class OutboxService {
         const writer = op.writer
         const params: Record<string, string> = writer ? { writer } : {}
         switch (op.kind) {
+            case 'match': {
+                const { temp, ...match } = b
+                return this.http.post(`${this.apiUrl}/matches/create/`, match)
+            }
             case 'touch': return this.http.post(`${this.apiUrl}/touches/create/`, { ...b, set: r(b.set), writer })
             case 'touchDelete': return b.client_id
                 ? this.http.delete(`${this.apiUrl}/touches/delete/client/${encodeURIComponent(b.client_id)}/`, { params })

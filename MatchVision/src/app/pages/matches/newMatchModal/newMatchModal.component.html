@@ -46,7 +46,13 @@
             <div class="alert alert-danger mt-3 mb-0" role="alert">{{ errorMessage }}</div>
         }
         @if (matchInfoSaved) {
-            <div class="alert alert-success mt-3 mb-0" role="status">Partita salvata: premi Inizia</div>
+            <div class="alert alert-success mt-3 mb-0" role="status">
+                @if (savedOffline) {
+                    Partita salvata su questo dispositivo (nessuna connessione): arriva al server da sola quando torna la rete. Premi Inizia
+                } @else {
+                    Partita salvata: premi Inizia
+                }
+            </div>
         }
 
         <div class="modal-footer">

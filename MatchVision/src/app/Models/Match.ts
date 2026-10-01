@@ -11,6 +11,8 @@ export class Match {
         public tiebreak_points?: number,
         public results?: { home_score: number; guest_score: number }[],
         // Saved while the match is being scouted, null when not started or over
-        public live_state?: any
+        public live_state?: any,
+        // Created on this device without a connection: not on the server yet (temporary negative id)
+        public local?: boolean
     ) {}
 }

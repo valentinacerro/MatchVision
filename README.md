@@ -54,7 +54,9 @@ Ogni modifica è salvata subito sul dispositivo e parte da sola, in ordine, quan
 (anche a pagina chiusa, finché l'app è aperta). In alto compare **N modifiche da inviare** finché c'è qualcosa in attesa.
 
 - Ricaricando la pagina senza rete la partita si riapre dai dati del dispositivo; le liste mostrano l'ultima versione scaricata.
-- Per ritrovarla offline una partita va aperta almeno una volta con la rete (o creata e iniziata su quel dispositivo).
+- Anche una partita nuova si crea senza rete: resta sul dispositivo (in **Partite** con l'etichetta **Non ancora sul server**)
+  e arriva al server con il resto. Servono solo le squadre già scaricate, cioè aver aperto l'app online almeno una volta.
+- Una partita creata altrove, per riaprirla offline, va aperta almeno una volta con la rete su questo dispositivo.
 - Se intanto la stessa partita è stata aperta su un altro dispositivo, le modifiche di questo non vengono inviate:
   compare **⚠ Sincronizzazione** e si possono scartare (resta la versione dell'altro dispositivo).
 - Il logout con modifiche in attesa chiede conferma: restano sul dispositivo e partono al prossimo accesso.

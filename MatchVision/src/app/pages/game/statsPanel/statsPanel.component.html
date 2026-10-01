@@ -6,7 +6,7 @@
             <button type="button" class="btn" [class.btn-dark]="scope === 'match'" [class.btn-outline-dark]="scope !== 'match'" (click)="setScope('match')">Partita</button>
         </div>
         <button type="button" class="btn btn-outline-primary ms-2" (click)="load()">Aggiorna</button>
-        @if (matchId) {
+        @if (matchId && matchId > 0) {
             <!-- Same stats, live, on another device (e.g. the coach's tablet) -->
             <a class="btn btn-outline-secondary ms-2" [href]="'/bench/' + matchId" target="_blank" rel="noopener">Vista panchina</a>
         }
