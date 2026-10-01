@@ -46,6 +46,7 @@ urlpatterns = [
     path('touches/create/', views.createTouch),
     path('touches/delete/<int:pk>/', views.deleteTouch),
     path('touches/delete/client/<str:client_id>/', views.deleteTouchByClient),
+    path('touches/update/client/<str:client_id>/', views.updateTouchByClient),
 
     # Details
     path('player_details/<int:pk>/matches/', views.getPlayersMatches),
@@ -60,6 +61,8 @@ urlpatterns = [
     path('match_details/sets/<int:pk>/stats/', views.getSetsStats),
     path('match_details/sets/<int:set_id>/player/<int:player_id>/stats/', views.getSetPlayerStats),
 
+    path('match_details/<int:pk>/touch_map/', views.getMatchTouchMap),
+    path('match_details/sets/<int:pk>/touch_map/', views.getSetTouchMap),
     path('match_details/<int:pk>/kpi/', views.getMatchKpi),
     path('match_details/sets/<int:pk>/kpi/', views.getSetKpi),
 

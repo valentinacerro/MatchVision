@@ -10,7 +10,7 @@ from django.shortcuts import get_object_or_404
 
 from .auth import issue_token
 from .models import Player, Team, Match, Set, Touch, Rally, Event
-from .serializers import RallyReasonSerializer, SetUpdateSerializer, MatchUpdateSerializer, PlayerSerializer, TeamSerializer, MatchSerializer, SetSerializer, TouchSerializer, EventSerializer, AccountSerializer, RegisterSerializer, RallySerializer
+from .serializers import RallyReasonSerializer, TouchZoneSerializer, SetUpdateSerializer, MatchUpdateSerializer, PlayerSerializer, TeamSerializer, MatchSerializer, SetSerializer, TouchSerializer, EventSerializer, AccountSerializer, RegisterSerializer, RallySerializer
 
 import pandas as pd
 from .utils import create_table_match_stats, create_table_set_stats, create_table_set_player, create_kpi_table, create_rally_table
@@ -415,6 +415,21 @@ def deleteTouchByClient(request, client_id):
     touch.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
 
+# Zones of a touch, given after it (by client id, like the undo)
+@api_view(['PATCH'])
+def updateTouchByClient(request, client_id):
+    touch = Touch.objects.select_related('set__match').filter(client_id=client_id, set__match__user=request.user).first()
+    if touch is None:
+        return Response({"error": "Touch not found"}, status=status.HTTP_404_NOT_FOUND)
+    reason = refused_write(touch.set.match, request)
+    if reason:
+        return Response({"error": reason}, status=status.HTTP_409_CONFLICT)
+    serializer = TouchZoneSerializer(touch, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(TouchSerializer(touch).data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 @api_view(['DELETE'])
 def deleteTouch(request, pk):
     try:
@@ -607,6 +622,24 @@ def getMatchRallyStats(request, pk):
 def getSetRallyStats(request, pk):
     own_set(request, pk)
     return Response(create_rally_table(Rally.objects.filter(set_id=pk)))
+
+
+# Serves and attacks with their zones, for the court charts
+MAP_FUNDAMENTALS = ['Battuta', 'Attacco']
+
+def touch_map(touches):
+    return list(touches.filter(fundamental__in=MAP_FUNDAMENTALS).order_by('id').values(
+        'player_id', 'player__number', 'fundamental', 'outcome', 'start_zone', 'end_zone', 'end_x', 'end_y'))
+
+@api_view(['GET'])
+def getMatchTouchMap(request, pk):
+    own_match(request, pk)
+    return Response(touch_map(Touch.objects.filter(set__match_id=pk)))
+
+@api_view(['GET'])
+def getSetTouchMap(request, pk):
+    own_set(request, pk)
+    return Response(touch_map(Touch.objects.filter(set_id=pk)))
 
 
 # Events of a set (substitutions, time-outs, cards) in the order they happened

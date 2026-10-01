@@ -246,3 +246,50 @@ class PointReasonTests(APITestCase):
         self.assertEqual(reason_from_cause(R('Ricezione — —', 'guests')), 'reception_error')
         self.assertEqual(reason_from_cause(R('Cartellino rosso OSPITI', 'home')), 'opp_penalty')
         self.assertEqual(reason_from_cause(R('', 'home')), '')
+
+
+class TouchZoneTests(APITestCase):
+    """Where serves and attacks started and ended (DataVolley zones 1-9 and the exact point)."""
+
+    def setUp(self):
+        cache.clear()
+        token = self.client.post('/auth/register/', {'email': 'zones@example.com', 'password': 'Pallavolo-2026'}, format='json').data['token']
+        self.api = client_with(token)
+        self.player = self.api.post('/players/create/', {'name': 'Ada', 'number': 7}, format='json').data['id']
+        team = self.api.post('/teams/create/', {'name': 'U18', 'playersList': [self.player]}, format='json').data['id']
+        self.match = self.api.post('/matches/create/', {'name': 'A', 'team_id': team}, format='json').data['id']
+        self.set = self.api.post('/sets/create/', {'match': self.match, 'number': 1}, format='json').data['id']
+
+    def touch(self, client_id, fundamental='Attacco', **zones):
+        return self.api.post('/touches/create/', {'set': self.set, 'player': self.player, 'fundamental': fundamental,
+                                                  'outcome': '++', 'client_id': client_id, **zones}, format='json')
+
+    def test_zones_saved_with_the_touch(self):
+        res = self.touch('a1', start_zone=4, end_zone=1, end_x=0.9, end_y=0.8)
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual((res.data['start_zone'], res.data['end_zone'], res.data['end_x']), (4, 1, 0.9))
+
+    def test_zones_out_of_range_refused(self):
+        self.assertEqual(self.touch('a2', end_zone=10).status_code, 400)
+        self.assertEqual(self.touch('a3', end_x=1.5).status_code, 400)
+
+    def test_end_point_given_after_the_touch(self):
+        self.touch('a4', start_zone=3)
+        res = self.api.patch('/touches/update/client/a4/', {'end_zone': 5, 'end_x': 0.1, 'end_y': 0.9}, format='json')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual((res.data['start_zone'], res.data['end_zone']), (3, 5))
+        self.assertEqual(self.api.patch('/touches/update/client/nope/', {'end_zone': 5}, format='json').status_code, 404)
+        self.assertEqual(self.api.patch('/touches/update/client/a4/', {'end_zone': 0}, format='json').status_code, 400)
+
+    def test_map_of_serves_and_attacks(self):
+        self.touch('a5', start_zone=4, end_zone=1, end_x=0.8, end_y=0.9)
+        self.touch('s1', fundamental='Battuta', end_zone=6, end_x=0.5, end_y=0.9)
+        self.touch('r1', fundamental='Ricezione')
+        for url in [f'/match_details/{self.match}/touch_map/', f'/match_details/sets/{self.set}/touch_map/']:
+            data = self.api.get(url).data
+            self.assertEqual([t['fundamental'] for t in data], ['Attacco', 'Battuta'], url)
+            self.assertEqual(data[0]['player__number'], 7)
+            self.assertEqual(data[1]['end_zone'], 6)
+        other = client_with(self.client.post('/auth/register/', {'email': 'z2@example.com', 'password': 'Pallavolo-2026'}, format='json').data['token'])
+        self.assertEqual(other.get(f'/match_details/{self.match}/touch_map/').status_code, 404)
+        self.assertEqual(other.patch('/touches/update/client/a5/', {'end_zone': 2}, format='json').status_code, 404)

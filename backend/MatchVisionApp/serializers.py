@@ -93,9 +93,16 @@ class TouchSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Touch
-        fields = ['id', 'set', 'player', 'fundamental', 'outcome', 'client_id']
+        fields = ['id', 'set', 'player', 'fundamental', 'outcome', 'client_id', 'start_zone', 'end_zone', 'end_x', 'end_y']
         # Duplicates are handled in the view, which returns the touch already saved
         extra_kwargs = {'client_id': {'validators': [], 'allow_blank': False}}
+
+
+# Where the ball went, given after the touch (a tap on the court)
+class TouchZoneSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Touch
+        fields = ['start_zone', 'end_zone', 'end_x', 'end_y']
 
 
 # --- EVENT ---
