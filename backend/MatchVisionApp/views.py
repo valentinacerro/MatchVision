@@ -10,7 +10,7 @@ from django.shortcuts import get_object_or_404
 
 from .auth import issue_token
 from .models import Player, Team, Match, Set, Touch, Rally, Event
-from .serializers import SetUpdateSerializer, MatchUpdateSerializer, PlayerSerializer, TeamSerializer, MatchSerializer, SetSerializer, TouchSerializer, EventSerializer, AccountSerializer, RegisterSerializer, RallySerializer
+from .serializers import RallyReasonSerializer, SetUpdateSerializer, MatchUpdateSerializer, PlayerSerializer, TeamSerializer, MatchSerializer, SetSerializer, TouchSerializer, EventSerializer, AccountSerializer, RegisterSerializer, RallySerializer
 
 import pandas as pd
 from .utils import create_table_match_stats, create_table_set_stats, create_table_set_player, create_kpi_table, create_rally_table
@@ -575,6 +575,21 @@ def deleteRally(request, client_id):
         return Response({"error": reason}, status=status.HTTP_409_CONFLICT)
     rally.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+# Why the point was won, chosen after the rally (by client id, like the undo)
+@api_view(['PATCH'])
+def updateRally(request, client_id):
+    rally = Rally.objects.select_related('set__match').filter(client_id=client_id, set__match__user=request.user).first()
+    if rally is None:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+    reason = refused_write(rally.set.match, request)
+    if reason:
+        return Response({"error": reason}, status=status.HTTP_409_CONFLICT)
+    serializer = RallyReasonSerializer(rally, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(RallySerializer(rally).data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['GET'])
 def getSetRallies(request, pk):

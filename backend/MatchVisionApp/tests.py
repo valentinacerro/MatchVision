@@ -187,3 +187,62 @@ class OfflineSyncTests(APITestCase):
         self.assertEqual(self.api.put(f'/matches/update/{match}/', {'live_state': state}, format='json').status_code, 200)
         other = {'v': 1, 'writer': 'page-2', 'baseRev': 0}
         self.assertEqual(self.api.put(f'/matches/update/{match}/', {'live_state': other}, format='json').status_code, 409)
+
+
+class PointReasonTests(APITestCase):
+    """How each point was won: our winners, their errors, their winners, our errors."""
+
+    def setUp(self):
+        cache.clear()
+        token = self.client.post('/auth/register/', {'email': 'coach2@example.com', 'password': 'Pallavolo-2026'}, format='json').data['token']
+        self.api = client_with(token)
+        team = self.api.post('/teams/create/', {'name': 'U18', 'playersList': []}, format='json').data['id']
+        self.match = self.api.post('/matches/create/', {'name': 'A', 'team_id': team}, format='json').data['id']
+        self.set = self.api.post('/sets/create/', {'match': self.match, 'number': 1}, format='json').data['id']
+        self.n = 0
+
+    def rally(self, winner, reason='', cause=''):
+        self.n += 1
+        return self.api.post('/rallies/create/', {'set': self.set, 'number': self.n, 'serving': 'home', 'rotation': 0, 'winner': winner,
+                                                  'home_score': 0, 'guest_score': 0, 'cause': cause, 'reason': reason, 'client_id': f'r-{self.n}'}, format='json')
+
+    def test_points_by_reason(self):
+        self.rally('home', 'attack')
+        self.rally('home', 'serve')
+        self.rally('home', 'opp_serve_error')
+        self.rally('home')                      # a "+" without a reason
+        self.rally('guests', 'opp_attack')
+        self.rally('guests', 'reception_error')
+        self.rally('guests', 'penalty')
+        points = self.api.get(f'/match_details/sets/{self.set}/rally_stats/').data['points']
+        self.assertEqual(points['home']['total'], 4)
+        self.assertEqual(points['home']['reasons']['attack'], 1)
+        self.assertEqual(points['home']['gifted'], 1)
+        self.assertEqual(points['home']['unspecified'], 1)
+        self.assertEqual(points['guests']['gifted'], 2)
+        self.assertEqual(points['guests']['reasons']['opp_attack'], 1)
+        match_points = self.api.get(f'/match_details/{self.match}/rally_stats/').data['points']
+        self.assertEqual(match_points['guests']['total'], 3)
+
+    def test_empty_set_has_zero_points(self):
+        points = self.api.get(f'/match_details/sets/{self.set}/rally_stats/').data['points']
+        self.assertEqual((points['home']['total'], points['guests']['unspecified']), (0, 0))
+
+    def test_reason_chosen_after_the_point(self):
+        self.rally('guests')
+        res = self.api.patch('/rallies/update/r-1/', {'reason': 'opp_block', 'cause': 'Muro avversario'}, format='json')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data['reason'], 'opp_block')
+        self.assertEqual(self.api.patch('/rallies/update/nope/', {'reason': 'opp_block'}, format='json').status_code, 404)
+        other = client_with(self.client.post('/auth/register/', {'email': 'y@example.com', 'password': 'Pallavolo-2026'}, format='json').data['token'])
+        self.assertEqual(other.patch('/rallies/update/r-1/', {'reason': 'opp_ace'}, format='json').status_code, 404)
+
+    def test_old_rallies_get_a_reason(self):
+        from importlib import import_module
+        reason_from_cause = import_module('MatchVisionApp.migrations.0010_rally_reason').reason_from_cause
+        class R:
+            def __init__(self, cause, winner): self.cause, self.winner = cause, winner
+        self.assertEqual(reason_from_cause(R('Attacco ++', 'home')), 'attack')
+        self.assertEqual(reason_from_cause(R('Ricezione — —', 'guests')), 'reception_error')
+        self.assertEqual(reason_from_cause(R('Cartellino rosso OSPITI', 'home')), 'opp_penalty')
+        self.assertEqual(reason_from_cause(R('', 'home')), '')

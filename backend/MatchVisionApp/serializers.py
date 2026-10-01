@@ -146,12 +146,19 @@ class RegisterSerializer(AccountSerializer):
 
 
 # --- RALLY ---
+class RallyReasonSerializer(serializers.ModelSerializer):
+    # Chosen by the scout after the point (why the opponent won it, or which error of theirs gave it to us)
+    class Meta:
+        model = Rally
+        fields = ['reason', 'cause']
+
+
 class RallySerializer(serializers.ModelSerializer):
     set = OwnedField(owner='match__user', queryset=Set.objects.all())
     p1_player = OwnedField(queryset=Player.objects.all(), allow_null=True, required=False)
 
     class Meta:
         model = Rally
-        fields = ['id', 'set', 'number', 'serving', 'rotation', 'p1_player', 'winner', 'home_score', 'guest_score', 'cause', 'client_id']
+        fields = ['id', 'set', 'number', 'serving', 'rotation', 'p1_player', 'winner', 'home_score', 'guest_score', 'cause', 'reason', 'client_id']
         # Duplicates are handled in the view, which returns the rally already saved
         extra_kwargs = {'client_id': {'validators': []}}

@@ -169,6 +169,8 @@ class Rally(models.Model):
     home_score = models.PositiveIntegerField(verbose_name="Punteggio casa dopo il punto")
     guest_score = models.PositiveIntegerField(verbose_name="Punteggio ospiti dopo il punto")
     cause = models.CharField(max_length=40, blank=True, default='', verbose_name="Causa")  # e.g. "Attacco ++"
+    # How the point was won, as a code (see POINT_REASONS in utils): '' = not specified
+    reason = models.CharField(max_length=24, blank=True, default='', verbose_name="Motivo")
     client_id = models.CharField(max_length=64, unique=True, verbose_name="Id client")
 
     class Meta:

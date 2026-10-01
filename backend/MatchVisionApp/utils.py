@@ -228,15 +228,44 @@ def _share(won, total):
     return {'won': won, 'total': total, 'pct': pct}
 
 
+# How a point was won (Rally.reason). Home points: our winners and opponent errors;
+# opponent points: their winners and our errors. '' = not specified (a "+" without a reason)
+POINT_REASONS = {
+    'home': ['serve', 'attack', 'block', 'opp_serve_error', 'opp_attack_error', 'opp_fault', 'opp_error', 'opp_penalty'],
+    'guests': ['opp_ace', 'opp_attack', 'opp_block', 'opp_point',
+               'serve_error', 'reception_error', 'set_error', 'attack_error', 'block_error', 'defense_error', 'penalty'],
+}
+# Points the other team gave away (errors and penalties)
+GIFTS = {'home': {'opp_serve_error', 'opp_attack_error', 'opp_fault', 'opp_error', 'opp_penalty'},
+         'guests': {'serve_error', 'reception_error', 'set_error', 'attack_error', 'block_error', 'defense_error', 'penalty'}}
+
+
+def create_point_table(df):
+    """Points of each team by reason: {'home': {'total', 'gifted', 'unspecified', 'reasons': {code: n}}, 'guests': ...}"""
+    table = {}
+    for team, codes in POINT_REASONS.items():
+        won = df[df['winner'] == team] if not df.empty else df
+        counts = won['reason'].value_counts() if not won.empty else {}
+        reasons = {code: int(counts.get(code, 0)) for code in codes}
+        table[team] = {
+            'total': int(len(won)),
+            'gifted': sum(n for code, n in reasons.items() if code in GIFTS[team]),
+            # anything else (empty, or a code this version does not know) counts as not specified
+            'unspecified': int(len(won)) - sum(reasons.values()),
+            'reasons': reasons,
+        }
+    return table
+
+
 def create_rally_table(rallies, by='rotation'):
     """
     rallies: a Rally queryset (a set or a whole match).
     by: 'rotation' (rotation index within a set) or 'p1' (player in position 1, comparable across sets
         whose lineups started in different rotations).
-    Returns {'total', 'sideout', 'breakpoint', 'rotations': [{rotation, p1, sideout, breakpoint}]}.
+    Returns {'total', 'sideout', 'breakpoint', 'rotations': [{rotation, p1, sideout, breakpoint}], 'points'}.
     """
-    df = pd.DataFrame(list(rallies.values('serving', 'rotation', 'winner', 'p1_player__number')))
-    empty = {'total': 0, 'sideout': _share(0, 0), 'breakpoint': _share(0, 0), 'rotations': []}
+    df = pd.DataFrame(list(rallies.values('serving', 'rotation', 'winner', 'reason', 'p1_player__number')))
+    empty = {'total': 0, 'sideout': _share(0, 0), 'breakpoint': _share(0, 0), 'rotations': [], 'points': create_point_table(df)}
     if df.empty:
         return empty
 
@@ -282,4 +311,5 @@ def create_rally_table(rallies, by='rotation'):
         'sideout': phase_share(overall, 'sideout'),
         'breakpoint': phase_share(overall, 'breakpoint'),
         'rotations': rotations,
+        'points': create_point_table(df),
     }
