@@ -19,6 +19,9 @@
         } @else if (error) {
             <div class="alert alert-danger mb-0">{{ error }}</div>
         } @else {
+            @if (waiting > 0) {
+                <div class="alert alert-warning py-2">Statistiche del server: mancano {{ waiting === 1 ? '1 modifica' : waiting + ' modifiche' }} ancora da inviare (senza connessione)</div>
+            }
             <app-kpi-view [rows]="rows" [rallies]="rallies"></app-kpi-view>
         }
     </div>

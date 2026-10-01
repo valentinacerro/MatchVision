@@ -2,6 +2,14 @@
 
     <h1 class="app-title" [routerLink]="['/']">MatchVision</h1>
 
+    @if (auth.user() && syncProblem) {
+        <button type="button" class="badge sync-badge sync-problem" (click)="syncOpen.set(!syncOpen())">⚠ Sincronizzazione</button>
+    } @else if (auth.user() && waiting) {
+        <span class="badge sync-badge" title="Salvate su questo dispositivo: partono da sole quando il server è raggiungibile">
+            {{ outbox.pending() === 1 ? '1 modifica da inviare' : outbox.pending() + ' modifiche da inviare' }}
+        </span>
+    }
+
     @if (pwa.offline()) {
         <span class="badge offline-badge" title="Nessuna connessione: l'app si apre, ma i dati non arrivano al server">Offline</span>
     }
@@ -18,6 +26,19 @@
     }
 
 </header>
+
+@if (syncOpen() && syncProblem) {
+    <div class="sync-panel" role="dialog" aria-label="Sincronizzazione">
+        @if (outbox.blockedCount() > 0) {
+            <p>Alcune modifiche fatte qui non sono state inviate: la partita è stata aperta su un altro dispositivo, o è terminata.</p>
+            <button type="button" class="btn btn-sm btn-outline-danger" (click)="discardBlocked()">Scarta queste modifiche</button>
+        }
+        @if (outbox.rejectedCount() > 0) {
+            <p>{{ outbox.rejectedCount() === 1 ? '1 modifica è stata rifiutata' : outbox.rejectedCount() + ' modifiche sono state rifiutate' }} dal server (ad esempio per un set eliminato).</p>
+            <button type="button" class="btn btn-sm btn-outline-secondary" (click)="discardRejected()">Ho capito</button>
+        }
+    </div>
+}
 
 <!-- A new version is ready: it is used after a reload, when the user chooses (never in the middle of a rally) -->
 @if (pwa.updateReady() && !updateLater()) {

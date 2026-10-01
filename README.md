@@ -41,11 +41,24 @@ npm run preview        # build + http://localhost:4300
 
 - **Chrome, Edge, Android:** pulsante **Installa** in alto.
 - **iPad, iPhone:** in Safari, **Condividi → Aggiungi alla schermata Home**.
-- **Senza rete** l'app si apre e mostra **Offline**; per ora i dati arrivano solo con la connessione.
+- **Senza rete** l'app si apre e mostra **Offline** (vedi sotto).
 - **Nuova versione:** compare l'avviso **Aggiorna**. Non si ricarica mai da sola, così non interrompe uno scout.
 
 Da un tablet sulla rete locale (`http://192.168…`) l'app funziona, ma i browser permettono installazione
 e avvio offline solo in HTTPS (o su `localhost`): servirà la versione online.
+
+## Senza connessione
+
+Una partita si può fare tutta senza rete: tocchi, punti, annulla, cambi, time-out, fine set, nuovo set, fine partita.
+Ogni modifica è salvata subito sul dispositivo e parte da sola, in ordine, quando il server è di nuovo raggiungibile
+(anche a pagina chiusa, finché l'app è aperta). In alto compare **N modifiche da inviare** finché c'è qualcosa in attesa.
+
+- Ricaricando la pagina senza rete la partita si riapre dai dati del dispositivo; le liste mostrano l'ultima versione scaricata.
+- Per ritrovarla offline una partita va aperta almeno una volta con la rete (o creata e iniziata su quel dispositivo).
+- Se intanto la stessa partita è stata aperta su un altro dispositivo, le modifiche di questo non vengono inviate:
+  compare **⚠ Sincronizzazione** e si possono scartare (resta la versione dell'altro dispositivo).
+- Il logout con modifiche in attesa chiede conferma: restano sul dispositivo e partono al prossimo accesso.
+- Le statistiche durante la partita sono quelle del server: senza rete mancano le ultime modifiche (lo dice il pannello).
 
 ## Account
 

@@ -20,6 +20,20 @@
         font-size: 0.85rem;
     }
 
+    .sync-badge {
+        margin-right: 0.75rem;
+        background-color: #e9ecef;
+        color: #212529;
+        font-size: 0.85rem;
+        border: none;
+    }
+
+    .sync-problem {
+        background-color: #dc3545;
+        color: white;
+        cursor: pointer;
+    }
+
     .install-btn {
         margin-right: 0.75rem;
     }
@@ -77,4 +91,24 @@
     background-color: #253f60;
     color: white;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.sync-panel {
+    position: fixed;
+    top: 68px;
+    right: 12px;
+    z-index: 2100;
+    max-width: min(26rem, calc(100vw - 24px));
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    background-color: white;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+
+    p {
+        margin-bottom: 0.5rem;
+    }
+
+    p + .btn + p {
+        margin-top: 0.75rem;
+    }
 }

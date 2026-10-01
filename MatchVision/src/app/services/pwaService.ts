@@ -48,7 +48,7 @@ export class PwaService {
         this.canInstall.set(false)
     }
 
-    // The game screen asks to confirm the reload if some touch is not saved yet
+    // Nothing is lost: every change of the game screen is already on the device
     async update(): Promise<void> {
         await this.swUpdate.activateUpdate().catch(() => false)
         document.location.reload()

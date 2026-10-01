@@ -3,6 +3,7 @@ import { NgbModal } from '@ng-bootstrap/ng-bootstrap'
 import { forkJoin } from 'rxjs'
 import { KpiRow, RallyStats, StatsService } from '../../../services/statsService'
 import { KpiViewComponent } from '../../shared/kpiView/kpiView.component'
+import { OutboxService } from '../../../services/outboxService'
 
 // KPI of the current set or of the whole match, readable during a time-out.
 // Opens over the game, so the live state is kept.
@@ -18,6 +19,7 @@ export class StatsPanelComponent {
     private modalService = inject(NgbModal)
     private statsService = inject(StatsService)
     private cdr = inject(ChangeDetectorRef)
+    private outbox = inject(OutboxService)
     @ViewChild('content', { static: true }) content!: TemplateRef<any>
 
     @Input() matchId: number | null = null
@@ -29,6 +31,7 @@ export class StatsPanelComponent {
     rallies: RallyStats | null = null
     loading = false
     error = ''
+    waiting = 0 // changes of this match not on the server yet: the stats do not include them
     private request = 0 // only the latest answer is shown
 
     open(): void {
@@ -46,9 +49,16 @@ export class StatsPanelComponent {
         const request = ++this.request
         this.rows = []
         this.rallies = null
+        this.waiting = this.matchId ? this.outbox.pendingFor(this.matchId) : 0
         if (!id) {
             this.loading = false
             this.error = this.scope === 'set' ? 'Nessun set attivo' : 'Nessuna partita attiva'
+            return
+        }
+        // A set opened without a connection is not on the server yet
+        if (id < 0) {
+            this.loading = false
+            this.error = 'Statistiche del set disponibili appena il set arriva al server (serve la connessione)'
             return
         }
         this.loading = true

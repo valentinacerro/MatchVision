@@ -1,4 +1,4 @@
-import { ChangeDetectorRef, Component, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core'
+import { ChangeDetectorRef, Component, inject, OnDestroy, OnInit, ViewChild } from '@angular/core'
 import { ActivatedRoute, Router, RouterModule } from '@angular/router'
 
 import { ChangePlayersModalComponent } from "./changePlayersModal/changePlayersModal.component"
@@ -11,26 +11,27 @@ import { Player } from '../../Models/Player'
 import { Event, EventType } from '../../Models/Event'
 import { Touch } from '../../Models/Touch'
 import { Set } from '../../Models/Set'
+import { Match } from '../../Models/Match'
 
 import { TouchesService } from '../../services/touchesService'
-import { SetsService } from '../../services/setsService'
 import { GlobalService } from '../../services/globalService'
 import { MatchesService } from '../../services/matchesService'
 import { RalliesService, Rally } from '../../services/ralliesService'
-import { EventsService, GameEvent } from '../../services/eventsService'
-import { forkJoin, switchMap, timeout } from 'rxjs'
+import { GameEvent } from '../../services/eventsService'
+import { OutboxEvent, OutboxService } from '../../services/outboxService'
+import { forkJoin, Subscription, switchMap } from 'rxjs'
 import {
     afterPoint, DEFAULT_FORMAT, isDecidingSet, MatchFormat, matchWinner, serverIndex, setsWon, setWinner,
     sideSwitchDue, suggestFundamental, Team, terminalWinner,
 } from './rallyEngine'
 
 // A touch as tracked on this page: tap order and rally are fixed when the scout taps.
-// uncertain: the request timed out, so the server may have saved it anyway.
-type TrackedTouch = Touch & { seq: number; rally: number; uncertain?: boolean }
+// Saved on the device at once; the outbox sends it to the server when it can.
+type TrackedTouch = Touch & { seq: number; rally: number }
 
-const REQUEST_TIMEOUT_MS = 15000
 const STATE_KEY = 'matchvision.live.' // + match id, local copy of the live state
-const OTHER_DEVICE = 'La partita è stata aperta su un altro dispositivo o è terminata: ricarica la pagina per riprenderla qui'
+const OTHER_DEVICE = 'La partita è stata aperta su un altro dispositivo o è terminata: le modifiche fatte qui non vengono inviate'
+const STORAGE_FULL = 'Memoria del dispositivo piena: le ultime modifiche non sono salvate'
 
 // Game state before a score change, so it can be taken back
 interface Snapshot {
@@ -67,16 +68,25 @@ interface LiveState {
     scoreEvents: ScoreEvent[]
     rallyTouchIds: string[] // client ids of the touches of the rally in progress
     order: string[]         // client ids of this set's touches in tap order
-    unsent: TrackedTouch[]  // pending or failed touches, re-sent on resume
     rallyLog: { id: string; winner: Team }[] // rallies of this set, oldest first
-    unsentRallies: Rally[]
-    unsentRallyDeletes: string[]
     subs: Substitution[]
-    unsentEvents: GameEvent[]
+    // Saved by earlier versions of this page (now everything waits in the outbox): sent again on resume
+    unsent?: TrackedTouch[]
+    unsentRallies?: Rally[]
+    unsentRallyDeletes?: string[]
+    unsentEvents?: GameEvent[]
     liberoFor: number[]
     nextRallyNumber: number
     outForMatch: number[] // injured players replaced by an exceptional substitution (no re-entry)
     guestTimeOuts: number
+}
+
+// The copy on this device also has what is needed to resume without a connection
+interface LocalState extends LiveState {
+    match?: Match
+    players?: Player[]
+    set?: Set | null
+    touches?: TrackedTouch[]
 }
 
 // A substitution of this set: the starter left for the sub; returned once the starter re-entered
@@ -103,11 +113,12 @@ function newClientId(): string {
 
 export class GameComponent implements OnInit, OnDestroy{
 
+    private outbox = inject(OutboxService)
+    private outboxEvents: Subscription | null = null
+
     constructor(private touchesService: TouchesService,
-        private setsService: SetsService,
         private matchesService: MatchesService,
         private ralliesService: RalliesService,
-        private eventsService: EventsService,
         public globalService: GlobalService,
         private router: Router,
         private route: ActivatedRoute,
@@ -155,17 +166,11 @@ export class GameComponent implements OnInit, OnDestroy{
     private scoreEvents: ScoreEvent[] = []
     // Every point is also saved as a rally (serve, rotation, winner) for side-out / break-point stats
     private rallyLog: { id: string; winner: Team }[] = []
-    private unsentRallies: Rally[] = []
-    private unsentRallyDeletes: string[] = []
-    private deletedRallies = new globalThis.Set<string>()
-    private rallyRetryTimer: any = null
     // Substitutions of this set (FIVB 15.6: a starter leaves once and re-enters once, for his substitute)
     subs: Substitution[] = []
-    private unsentEvents: GameEvent[] = []
     // Starters the libero replaces in the back row; empty = libero managed by hand
     liberoFor: number[] = []
     private nextRallyNumber = 1 // only grows within a set (a removed rally keeps its number used)
-    private rallyCreatedAt = new Map<string, number>() // last create attempt: a late create may still land
     outForMatch: number[] = []
     guestTimeOuts: number = 2
     info: string = ''
@@ -182,10 +187,7 @@ export class GameComponent implements OnInit, OnDestroy{
         fundamental: "",
         outcome: "" 
     }
-    touches: TrackedTouch[] = [] // confirmed by the server, in tap order
-    pendingTouches: TrackedTouch[] = [] // sent, waiting for the server
-    failedTouches: TrackedTouch[] = [] // not saved: the scout can retry or discard them
-    pendingDeletes: number = 0
+    touches: TrackedTouch[] = [] // of the current set, in tap order (saved on the device, sent by the outbox)
     touchSeq: number = 0
     rallySeq: number = 0 // incremented by every score change
     errors: { [key: string]: string } = {} // one message per operation
@@ -215,8 +217,6 @@ export class GameComponent implements OnInit, OnDestroy{
     newSet!: Set
     setNumber: number = 1
     endSetClicked: boolean = false
-    endingSet: boolean = false
-    creatingSet: boolean = false
     allSetsPlayed: boolean = false
     
     // To save match
@@ -224,6 +224,7 @@ export class GameComponent implements OnInit, OnDestroy{
     endingMatch: boolean = false
     
     ngOnInit(): void {
+        this.outboxEvents = this.outbox.events.subscribe(e => this.onOutboxEvent(e))
         const routeId = Number(this.route.snapshot.paramMap.get('matchId')) || null
         const currentMatch = this.globalService.currentMatch()
         console.log("dati partita corrente", currentMatch)
@@ -253,27 +254,21 @@ export class GameComponent implements OnInit, OnDestroy{
 
     resuming: boolean = false
     private saveTimer: any = null
-    private retryTimer: any = null
-    private serverRev: number = 0            // last revision the server confirmed
+    private queuedState: LiveState | null = null // newest state not yet handed to the outbox
     private readonly writer = newClientId()  // this page
-    private latestState: LiveState | null = null
     readOnlyReason: string = ''              // set when this page must not change the match any more
-
-    claiming: boolean = false // taking control of the match after a resume
 
     // Nothing can be changed while resuming or when the match is finished / taken over elsewhere
     get locked(): boolean {
-        return this.resuming || this.claiming || !!this.readOnlyReason
+        return this.resuming || !!this.readOnlyReason
     }
 
     private setReadOnly(reason: string): void {
         this.readOnlyReason = reason
         this.selectedPlayer = null
         clearTimeout(this.saveTimer)
-        clearTimeout(this.retryTimer)
-        clearTimeout(this.rallyRetryTimer)
-        this.rallyRetryTimer = null
         this.saveTimer = null
+        this.queuedState = null
         this.showError('readonly', reason)
     }
 
@@ -282,11 +277,11 @@ export class GameComponent implements OnInit, OnDestroy{
     }
 
     private buildState(): LiveState {
-        const all = [...this.touches, ...this.pendingTouches, ...this.failedTouches].sort((a, b) => a.seq - b.seq)
+        const id = this.matchId
         return {
             v: 1,
             writer: this.writer,
-            baseRev: this.serverRev,
+            baseRev: id ? this.outbox.rev(id) : 0,
             savedAt: Date.now(),
             rallySeq: this.rallySeq,
             setId: this.globalService.currentSet()?.id ?? null,
@@ -306,14 +301,10 @@ export class GameComponent implements OnInit, OnDestroy{
             endSetClicked: this.endSetClicked,
             allSetsPlayed: this.allSetsPlayed,
             scoreEvents: this.scoreEvents.slice(-50),
-            rallyTouchIds: all.filter(t => t.rally === this.rallySeq && t.client_id).map(t => t.client_id as string),
-            order: all.filter(t => t.client_id).map(t => t.client_id as string),
-            unsent: [...this.pendingTouches, ...this.failedTouches],
+            rallyTouchIds: this.touches.filter(t => t.rally === this.rallySeq && t.client_id).map(t => t.client_id as string),
+            order: this.touches.filter(t => t.client_id).map(t => t.client_id as string),
             rallyLog: this.rallyLog,
-            unsentRallies: this.unsentRallies,
-            unsentRallyDeletes: this.unsentRallyDeletes,
             subs: this.subs,
-            unsentEvents: this.unsentEvents,
             liberoFor: this.liberoFor,
             nextRallyNumber: this.nextRallyNumber,
             outForMatch: this.outForMatch,
@@ -321,45 +312,49 @@ export class GameComponent implements OnInit, OnDestroy{
         }
     }
 
+    // Saved on the device at once; the server gets the newest state shortly after, through the outbox
     saveState(): void {
         const id = this.matchId
         if (!id || this.endingMatch || this.locked) return
         const state = this.buildState()
-        this.latestState = state
-        try { localStorage.setItem(STATE_KEY + id, JSON.stringify(state)) } catch {}
+        this.saveLocal(id, state)
+        this.queuedState = state
         clearTimeout(this.saveTimer)
-        this.saveTimer = setTimeout(() => this.pushState(id, state), 800)
+        this.saveTimer = setTimeout(() => this.flushState(), 800)
     }
 
-    private pushState(id: number, state: LiveState, onSaved?: () => void): void {
+    private flushState(): void {
         this.saveTimer = null
-        clearTimeout(this.retryTimer)
-        if (this.endingMatch || this.readOnlyReason) return
-        // Always send the newest state, with the newest known server revision
-        const toSend = { ...state, baseRev: this.serverRev }
-        this.matchesService.updateMatch(id, { live_state: toSend }).subscribe({
-            next: (res) => {
-                this.serverRev = res.live_state?.rev ?? this.serverRev + 1
-                this.clearError('snapshot')
-                if (!this.readOnlyReason) onSaved?.()
-                this.cdr.detectChanges()
-            },
-            error: (err) => {
-                if (err?.status === 409) {
-                    // Another device went on with this match, or it is over: do not overwrite it
-                    this.setReadOnly(OTHER_DEVICE)
-                    return
-                }
-                this.showError('snapshot', 'Stato della partita non salvato sul server: riprovo tra poco', err)
-                // Retry only if this is still the newest state and no newer save is on its way
-                this.retryTimer = setTimeout(() => {
-                    if (!this.saveTimer && this.latestState === state) this.pushState(id, state, onSaved)
-                }, 5000)
-            },
-        })
+        const id = this.matchId
+        const state = this.queuedState
+        this.queuedState = null
+        if (!id || !state || this.endingMatch || this.readOnlyReason) return
+        this.record(() => this.outbox.enqueueState(id, state, this.writer))
     }
 
-    private readLocalState(id: number): LiveState | null {
+    private saveLocal(id: number, state: LiveState): void {
+        const local: LocalState = { ...state, match: this.globalService.currentMatch() ?? undefined, players: this.players,
+            set: this.globalService.currentSet(), touches: this.touches }
+        try {
+            localStorage.setItem(STATE_KEY + id, JSON.stringify(local))
+            this.clearError('storage')
+        } catch (err) {
+            this.showError('storage', STORAGE_FULL, err)
+        }
+    }
+
+    // A change goes to the device storage first: if that fails the scout must know, and nothing changes
+    private record(write: () => void): boolean {
+        try {
+            write()
+            return true
+        } catch (err) {
+            this.showError('storage', STORAGE_FULL, err)
+            return false
+        }
+    }
+
+    private readLocalState(id: number): LocalState | null {
         try {
             const raw = localStorage.getItem(STATE_KEY + id)
             return raw ? JSON.parse(raw) : null
@@ -368,6 +363,17 @@ export class GameComponent implements OnInit, OnDestroy{
 
     private resume(id: number): void {
         this.resuming = true
+        const local = this.readLocalState(id)
+        if (this.outbox.hasResults(id)) {
+            this.resuming = false
+            this.setReadOnly('Questa partita è terminata su questo dispositivo: i dati si stanno sincronizzando')
+            return
+        }
+        // Changes of this device are still waiting for the server: its copy is the newest one
+        if (this.canResumeLocally(local) && this.outbox.pendingFor(id) > 0) {
+            this.resumeLocally(local)
+            return
+        }
         forkJoin({ match: this.matchesService.getMatch(id), sets: this.matchesService.getMatchSets(id) }).pipe(
             switchMap(({ match, sets }) => this.globalService.getPlayersByTeamId(match.team_id).pipe(
                 switchMap(players => [{ match, sets, players }])
@@ -386,13 +392,11 @@ export class GameComponent implements OnInit, OnDestroy{
                     return
                 }
                 // The server copy, unless this device has changes on top of it that did not reach the server
-                const local = this.readLocalState(id)
                 const server = (match.live_state?.v === 1 ? match.live_state : null) as LiveState | null
                 const localIsNewer = !!local && local.v === 1 && local.writer !== undefined &&
                     (!server || (local.baseRev === (server.rev ?? 0) && local.savedAt > server.savedAt))
                 const state = localIsNewer ? local : server
-                this.serverRev = server?.rev ?? 0
-                this.pendingLocalPush = localIsNewer
+                this.outbox.setRev(id, Math.max(this.outbox.rev(id), server?.rev ?? 0))
                 if (!state) {
                     this.resuming = false
                     if (sets.length === 0) {
@@ -403,11 +407,16 @@ export class GameComponent implements OnInit, OnDestroy{
                     return
                 }
                 this.applyState(state, players)
-                const set = sets.find(s => s.id === state.setId) ?? null
+                const set = sets.find(s => s.id === this.outbox.resolve(state.setId ?? 0)) ?? null
                 this.globalService.currentSet.set(set)
+                if (localIsNewer && local?.touches) {
+                    this.touches = this.localTouches(local)
+                    this.finishResume(state, true)
+                    return
+                }
                 if (!set) {
                     if (state.setId && !state.endSetClicked) this.showError('set', 'Il set in corso era stato eliminato: premi NUOVO SET')
-                    this.finishResume(state)
+                    this.finishResume(state, true)
                     return
                 }
                 this.touchesService.getSetTouches(set.id).subscribe({
@@ -415,19 +424,46 @@ export class GameComponent implements OnInit, OnDestroy{
                         // Tap order and rally of each touch as saved; the rest are earlier rallies at the end
                         this.touches = touches.map(t => ({ ...t, seq: this.seqOf(state, t.client_id), rally: this.rallyOf(state, t.client_id) }))
                             .sort((a, b) => a.seq - b.seq)
-                        this.finishResume(state)
+                        this.finishResume(state, true)
                     },
                     error: (err) => {
                         this.showError('resume', 'Tocchi del set non caricati: undo non disponibile per i tocchi precedenti', err)
-                        this.finishResume(state)
+                        this.finishResume(state, true)
                     }
                 })
             },
             error: (err) => {
+                // No connection: the copy on this device is enough to go on
+                if (this.canResumeLocally(local)) {
+                    this.resumeLocally(local)
+                    return
+                }
                 this.resuming = false
-                this.showError('match', 'Partita non caricata: controlla la connessione e ricarica la pagina', err)
+                this.showError('match', 'Partita non disponibile senza connessione: aprila una volta con la rete attiva, poi funziona anche offline', err)
             }
         })
+    }
+
+    private canResumeLocally(local: LocalState | null): local is LocalState {
+        return !!local && local.v === 1 && !!local.match && !!local.players
+    }
+
+    // Everything comes from the copy on this device (no server needed)
+    private resumeLocally(local: LocalState): void {
+        const players = local.players as Player[]
+        this.globalService.currentMatch.set(local.match as Match)
+        this.globalService.currentPlayers.set(players)
+        this.players = players
+        this.readFormat(local.match)
+        this.applyState(local, players)
+        this.globalService.currentSet.set(local.set ? { ...local.set, id: this.outbox.resolve(local.set.id) } : null)
+        this.touches = this.localTouches(local)
+        this.finishResume(local, false)
+    }
+
+    // Touches of a set created offline point to its temporary id until the server gave it one
+    private localTouches(local: LocalState): TrackedTouch[] {
+        return (local.touches ?? []).map(t => ({ ...t, set: this.outbox.resolve(t.set) })).sort((a, b) => a.seq - b.seq)
     }
 
     private applyState(s: LiveState, players: Player[]): void {
@@ -453,10 +489,7 @@ export class GameComponent implements OnInit, OnDestroy{
         this.allSetsPlayed = s.allSetsPlayed
         this.scoreEvents = s.scoreEvents ?? []
         this.rallyLog = s.rallyLog ?? []
-        this.unsentRallies = s.unsentRallies ?? []
-        this.unsentRallyDeletes = s.unsentRallyDeletes ?? []
         this.subs = s.subs ?? []
-        this.unsentEvents = s.unsentEvents ?? []
         this.liberoFor = s.liberoFor ?? []
         this.nextRallyNumber = s.nextRallyNumber ?? ((s.rallyLog ?? []).length + 1)
         this.outForMatch = s.outForMatch ?? []
@@ -475,50 +508,56 @@ export class GameComponent implements OnInit, OnDestroy{
         return clientId && (s.rallyTouchIds ?? []).includes(clientId) ? this.rallySeq : -1
     }
 
-    private pendingLocalPush = false
-
-    private finishResume(state: LiveState): void {
+    private finishResume(state: LiveState, online: boolean): void {
         this.resuming = false
         this.clearError('match')
-        // Touches not saved before the reload wait in the unsaved list (so they stay in the state
-        // even if taking control takes a while) and are sent again once this page controls the match
-        const saved = new globalThis.Set(this.touches.map(t => t.client_id))
-        this.failedTouches = (state.unsent ?? [])
-            .filter(t => !t.client_id || !saved.has(t.client_id))
-            .map(t => ({ ...t, seq: this.seqOf(state, t.client_id), rally: this.rallyOf(state, t.client_id) }))
+        this.touchSeq = Math.max(this.touchSeq, ...this.touches.map(t => t.seq))
+        this.queueLegacy(state)
         this.updateSuggestion()
-        // Opening the match here takes control of it: the other device can no longer write.
         const id = this.matchId
         if (!id) return
-        this.claiming = true
-        this.showInfo('Ripresa in corso…')
-        this.cdr.detectChanges()
+        const blocked = this.outbox.blockedReason(id)
+        if (blocked) {
+            this.setReadOnly(OTHER_DEVICE)
+            return
+        }
+        // Opening the match here takes control of it: the other device can no longer write.
+        // The claim waits in the outbox behind the changes not sent yet, so those still reach the server
         const claim = this.buildState()
-        this.latestState = claim
-        try { localStorage.setItem(STATE_KEY + id, JSON.stringify(claim)) } catch {}
-        this.pushState(id, claim, () => this.afterClaim(state))
+        this.saveLocal(id, claim)
+        this.record(() => this.outbox.enqueueState(id, claim, this.writer))
+        this.showInfo(online ? 'Partita ripresa' : 'Partita ripresa senza connessione: i dati si inviano quando torna la rete', online ? 3000 : 6000)
+        if (online) this.reconcileRallies()
     }
 
-    private afterClaim(state: LiveState): void {
-        this.claiming = false
-        this.showInfo('Partita ripresa')
-        // Data not saved before the reload is sent again (client ids prevent duplicates)
-        this.retryFailedTouches()
-        this.unsentRallyDeletes.forEach(id => this.deleteRallyOnServer(id))
-        this.unsentRallies.forEach(r => this.sendRally(r))
-        this.unsentEvents.forEach(e => this.sendEvent(e))
-        this.reconcileRallies()
+    // States saved by an earlier version of this page kept unsent data in the state itself
+    private queueLegacy(state: LiveState): void {
+        const id = this.matchId
+        if (!id) return
+        const known = new globalThis.Set(this.touches.map(t => t.client_id))
+        this.record(() => {
+            for (const t of state.unsent ?? []) {
+                const { seq, rally, uncertain, id: _, ...payload } = t as any
+                this.outbox.enqueue('touch', id, payload, this.writer)
+                if (!known.has(t.client_id)) this.touches = [...this.touches, { ...t, seq: this.seqOf(state, t.client_id), rally: this.rallyOf(state, t.client_id) }]
+            }
+            for (const clientId of state.unsentRallyDeletes ?? []) this.outbox.enqueue('rallyDelete', id, { client_id: clientId }, this.writer)
+            for (const r of state.unsentRallies ?? []) this.outbox.enqueue('rally', id, r, this.writer)
+            for (const e of state.unsentEvents ?? []) this.outbox.enqueue('event', id, e, this.writer)
+        })
+        this.touches = [...this.touches].sort((a, b) => a.seq - b.seq)
     }
 
     // Rallies on the server that this state does not know (e.g. saved by a device that then lost
     // control) are removed, so side-out / break-point match the score
     private reconcileRallies(): void {
         const set = this.globalService.currentSet()
-        if (!set?.id) return
+        const id = this.matchId
+        if (!set?.id || set.id < 0 || !id) return
         this.ralliesService.getSetRallies(set.id).subscribe({
             next: (rallies) => {
-                const known = new globalThis.Set([...this.rallyLog.map(r => r.id), ...this.unsentRallies.map(r => r.client_id)])
-                rallies.filter(r => !known.has(r.client_id)).forEach(r => this.deleteRallyOnServer(r.client_id))
+                const known = new globalThis.Set(this.rallyLog.map(r => r.id))
+                rallies.filter(r => !known.has(r.client_id)).forEach(r => this.record(() => this.outbox.removeRally(id, r.client_id, this.writer)))
                 const maxNumber = Math.max(0, ...rallies.map(r => r.number))
                 if (maxNumber >= this.nextRallyNumber) this.nextRallyNumber = maxNumber + 1
             },
@@ -526,16 +565,31 @@ export class GameComponent implements OnInit, OnDestroy{
         })
     }
 
-    // Leaving clears the global match state; "Riprendi scout" reloads it from the server
+    // What the outbox reports while this page is open
+    private onOutboxEvent(e: OutboxEvent): void {
+        const id = this.matchId
+        if (e.type === 'resolved') {
+            // A set created offline got its server id: everything here points to it from now on
+            const set = this.globalService.currentSet()
+            if (set?.id === e.temp) this.globalService.currentSet.set({ ...set, id: e.id })
+            this.touches = this.touches.map(t => t.set === e.temp ? { ...t, set: e.id } : t)
+            if (id && !this.locked && !this.endingMatch) this.saveLocal(id, this.buildState())
+        } else if (e.type === 'blocked' && id && this.outbox.resolve(id) === e.match) {
+            this.setReadOnly(OTHER_DEVICE)
+        } else if (e.type === 'rejected' && id && this.outbox.resolve(e.op.match) === this.outbox.resolve(id)) {
+            this.showError('rejected', 'Una modifica è stata rifiutata dal server: controlla i dati della partita nei Dettagli')
+        }
+        this.cdr.detectChanges()
+    }
+
+    // Leaving clears the global match state; "Riprendi scout" reloads it
     ngOnDestroy(): void {
         clearTimeout(this.infoTimer)
-        clearTimeout(this.retryTimer)
-        clearTimeout(this.rallyRetryTimer)
-        // Send a pending live-state save now, so "Riprendi scout" finds the latest state
-        const id = this.matchId
-        if (this.saveTimer && id && !this.endingMatch) {
+        this.outboxEvents?.unsubscribe()
+        // The newest state goes to the outbox now, so "Riprendi scout" finds it
+        if (this.saveTimer) {
             clearTimeout(this.saveTimer)
-            this.pushState(id, this.buildState())
+            this.flushState()
         }
         this.globalService.resetAll()
     }
@@ -568,8 +622,7 @@ export class GameComponent implements OnInit, OnDestroy{
     }
 
     private snapshot(): Snapshot {
-        const rallyIds = [...this.touches, ...this.pendingTouches, ...this.failedTouches]
-            .filter(t => t.rally === this.rallySeq && t.client_id).map(t => t.client_id as string)
+        const rallyIds = this.touches.filter(t => t.rally === this.rallySeq && t.client_id).map(t => t.client_id as string)
         return { home: this.score.home, guests: this.score.guests, serving: this.serving, rotation: this.rotation,
             rallySeq: this.rallySeq, index: this.index, sideSwitched: this.sideSwitched, rallyIds }
     }
@@ -605,7 +658,7 @@ export class GameComponent implements OnInit, OnDestroy{
         this.updateSuggestion()
         this.saveState()
         const setWon = setWinner(this.score, this.setNumber, this.format)
-        if (setWon && !this.endSetClicked && !this.endingSet) {
+        if (setWon && !this.endSetClicked) {
             const who = setWon === 'home' ? 'CASA' : 'OSPITI'
             if (confirm(`Set ${this.setNumber} vinto da ${who} ${this.score.home}-${this.score.guests}: chiudere il set?`)) this.endSet()
         }
@@ -629,94 +682,27 @@ export class GameComponent implements OnInit, OnDestroy{
         }
     }
 
-    // Saved with retries: the client id makes a repeated create harmless
+    // Saved on the device and sent by the outbox (the client id makes a repeated create harmless)
     private sendRally(rally: Rally): void {
-        if (!this.unsentRallies.some(r => r.client_id === rally.client_id)) this.unsentRallies = [...this.unsentRallies, rally]
-        this.saveState()
-        this.rallyCreatedAt.set(rally.client_id, Date.now())
-        this.ralliesService.createRally({ ...rally, writer: this.writer }).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
-            next: () => {
-                this.unsentRallies = this.unsentRallies.filter(r => r.client_id !== rally.client_id)
-                // Undone while the create was on its way: delete it now that it exists
-                if (this.deletedRallies.has(rally.client_id)) this.deleteRallyOnServer(rally.client_id)
-                this.saveState()
-            },
-            error: (err) => {
-                if (err?.status === 409) {
-                    this.setReadOnly(OTHER_DEVICE)
-                    return
-                }
-                console.error('Errore salvataggio rally', err)
-                this.scheduleRallyRetry()
-            }
-        })
+        const id = this.matchId
+        if (id) this.record(() => this.outbox.enqueue('rally', id, rally, this.writer))
     }
 
-    private removeRally(id: string): void {
-        this.rallyLog = this.rallyLog.filter(r => r.id !== id)
-        this.unsentRallies = this.unsentRallies.filter(r => r.client_id !== id)
-        this.deletedRallies.add(id)
-        this.deleteRallyOnServer(id)
+    // A rally still waiting is simply not sent; one already on the server is deleted there
+    private removeRally(clientId: string): void {
+        this.rallyLog = this.rallyLog.filter(r => r.id !== clientId)
+        const id = this.matchId
+        if (id) this.record(() => this.outbox.removeRally(id, clientId, this.writer))
     }
 
-    private deleteRallyOnServer(id: string): void {
-        if (!this.unsentRallyDeletes.includes(id)) this.unsentRallyDeletes = [...this.unsentRallyDeletes, id]
-        this.ralliesService.deleteRally(id, this.writer).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
-            next: () => this.rallyDeleted(id),
-            error: (err) => {
-                if (err?.status === 409) {
-                    this.setReadOnly(OTHER_DEVICE)
-                    return
-                }
-                // 404: not created yet, or already gone. A create sent in the last minute may still
-                // land (e.g. after a timeout): keep trying for a while, then give up
-                const recent = Date.now() - (this.rallyCreatedAt.get(id) ?? 0) < 60000
-                if (err?.status === 404 && !recent) this.rallyDeleted(id)
-                else this.scheduleRallyRetry()
-            }
-        })
-    }
-
-    private rallyDeleted(id: string): void {
-        this.unsentRallyDeletes = this.unsentRallyDeletes.filter(x => x !== id)
-        this.saveState()
-    }
-
-    private scheduleRallyRetry(): void {
-        if (this.rallyRetryTimer || this.readOnlyReason) return
-        this.rallyRetryTimer = setTimeout(() => {
-            this.rallyRetryTimer = null
-            this.unsentRallyDeletes.forEach(id => this.deleteRallyOnServer(id))
-            this.unsentRallies.forEach(r => this.sendRally(r))
-            this.unsentEvents.forEach(e => this.sendEvent(e))
-        }, 5000)
-    }
-
-    // Events (substitutions, time-outs, cards) are saved like rallies: queued, retried, idempotent
+    // Events (substitutions, time-outs, cards) go through the outbox like rallies
     private recordGameEvent(event_type: string, details: any = {}, team: Team = 'home'): void {
         const set = this.globalService.currentSet()
-        if (!set?.id) return
-        this.sendEvent({ event_type, set: set.id, team, details, home_score: this.score.home, guest_score: this.score.guests,
-            client_id: newClientId(), created_at: new Date().toISOString() })
-    }
-
-    private sendEvent(event: GameEvent): void {
-        if (!this.unsentEvents.some(e => e.client_id === event.client_id)) this.unsentEvents = [...this.unsentEvents, event]
-        this.saveState()
-        this.eventsService.createEvent({ ...event, writer: this.writer }).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
-            next: () => {
-                this.unsentEvents = this.unsentEvents.filter(e => e.client_id !== event.client_id)
-                this.saveState()
-            },
-            error: (err) => {
-                if (err?.status === 409) {
-                    this.setReadOnly(OTHER_DEVICE)
-                    return
-                }
-                console.error('Errore salvataggio evento', err)
-                this.scheduleRallyRetry()
-            }
-        })
+        const id = this.matchId
+        if (!set?.id || !id) return
+        const event: GameEvent = { event_type, set: set.id, team, details, home_score: this.score.home, guest_score: this.score.guests,
+            client_id: newClientId(), created_at: new Date().toISOString() }
+        this.record(() => this.outbox.enqueue('event', id, event, this.writer))
     }
 
     // Who serves: chosen at the start of the set, can be corrected at any time (no rotation)
@@ -735,7 +721,7 @@ export class GameComponent implements OnInit, OnDestroy{
 
     // Suggested fundamental for the pad; at the start of a home serve the server is preselected too
     updateSuggestion(): void {
-        const rally = [...this.touches, ...this.pendingTouches]
+        const rally = this.touches
             .filter(t => t.rally === this.rallySeq)
             .sort((a, b) => a.seq - b.seq)
             .map(t => t.fundamental)
@@ -798,10 +784,7 @@ export class GameComponent implements OnInit, OnDestroy{
         const reopened = this.rallySeq
         const closed = new globalThis.Set(p.rallyIds ?? [])
         const back = (t: TrackedTouch) => t.rally === reopened || (!!t.client_id && closed.has(t.client_id))
-        const retag = (list: TrackedTouch[]) => list.map(t => back(t) ? { ...t, rally: p.rallySeq } : t)
-        this.touches = retag(this.touches)
-        this.pendingTouches = retag(this.pendingTouches)
-        this.failedTouches = retag(this.failedTouches)
+        this.touches = this.touches.map(t => back(t) ? { ...t, rally: p.rallySeq } : t)
         this.rallySeq = p.rallySeq
         if (!this.selectedOnCourt) this.selectedPlayer = null
     }
@@ -818,42 +801,18 @@ export class GameComponent implements OnInit, OnDestroy{
     }
 
     get lastTouchText(): string {
-        const last = [...this.touches, ...this.pendingTouches].sort((a, b) => a.seq - b.seq).at(-1)
-        if (!last) return ''
-        return this.touchLabel(last) + (this.pendingTouches.includes(last) ? ' (salvataggio…)' : '')
+        const last = this.touches.at(-1)
+        return last ? this.touchLabel(last) : ''
     }
 
-    get failedTouchesText(): string {
-        return this.failedTouches.map(t => this.touchLabel(t)).join(', ')
-    }
-
+    // Every touch is on the device from the tap on, so any of them can be undone, even offline
     get canUndo(): boolean {
-        return this.touches.length > 0 && this.pendingTouches.length === 0 && this.pendingDeletes === 0 && !this.endSetClicked && !this.endingSet
-    }
-
-    get busy(): boolean {
-        return this.pendingTouches.length > 0 || this.pendingDeletes > 0
+        return this.touches.length > 0 && !this.endSetClicked && !this.locked
     }
 
     // The live state (lineup, score, rotation) exists only on this page
     get gameInProgress(): boolean {
         return !!this.globalService.currentMatch()?.id
-    }
-
-    // The live state is saved, so leaving or reloading is safe unless some touch is not saved yet
-    @HostListener('window:beforeunload', ['$event'])
-    onBeforeUnload(event: BeforeUnloadEvent): void {
-        if (this.gameInProgress && (this.busy || this.failedTouches.length > 0)) {
-            event.preventDefault()
-            event.returnValue = ''
-        }
-    }
-
-    canLeave(): boolean {
-        if (!this.gameInProgress || (!this.busy && this.failedTouches.length === 0)) return true
-        const n = this.failedTouches.length
-        const unsaved = n > 0 ? (n === 1 ? ' 1 tocco non salvato andrà perso.' : ` ${n} tocchi non salvati andranno persi.`) : ' Alcuni tocchi sono ancora in salvataggio.'
-        return confirm(`${unsaved.trim()} Uscire comunque? La partita si potrà riprendere da Partite → Riprendi scout.`)
     }
 
     // Errors stay on screen until the same operation succeeds or the scout closes them
@@ -1142,21 +1101,13 @@ export class GameComponent implements OnInit, OnDestroy{
             this.showError('locked', 'Set chiuso: premi NUOVO SET per continuare')
             return
         }
-        if (this.busy) {
-            this.showError('busy', 'Salvataggio in corso, riprova tra un attimo')
-            return
-        }
         const rallyTouches = this.touches.filter(t => t.rally === this.rallySeq)
-        const rallyFailed = this.failedTouches.filter(t => t.rally === this.rallySeq)
-        const total = rallyTouches.length + rallyFailed.length
-        if (total === 0) {
+        if (rallyTouches.length === 0) {
             this.showError('rally', 'Palla contesa: nessun tocco da eliminare in questo rally')
             return
         }
-        const count = total === 1 ? '1 tocco' : `${total} tocchi`
+        const count = rallyTouches.length === 1 ? '1 tocco' : `${rallyTouches.length} tocchi`
         if (!confirm(`Palla contesa: eliminare ${count} del rally in corso?`)) return
-        // Unsaved touches of this rally are dropped only after the confirm
-        this.dropUnsaved(rallyFailed)
         rallyTouches.forEach(t => this.deleteTouch(t))
     }
 
@@ -1166,152 +1117,39 @@ export class GameComponent implements OnInit, OnDestroy{
         if (last && this.canUndo) this.deleteTouch(last)
     }
 
-    // key: one message per touch, so one success does not hide another failure
-    deleteTouch(touch: TrackedTouch, onFail?: () => void, key: string = `delete-${touch.id}`): void {
-        this.pendingDeletes++
-        this.touchesService.deleteTouch(touch.id, this.writer).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
-            next: () => this.onTouchDeleted(touch, key),
-            error: (err) => {
-                if (err?.status === 409) {
-                    this.pendingDeletes--
-                    onFail?.()
-                    this.setReadOnly(OTHER_DEVICE)
-                    return
-                }
-                // 404: already deleted on the server (e.g. an earlier timed-out delete went through)
-                if (err?.status === 404) {
-                    this.onTouchDeleted(touch, key)
-                    return
-                }
-                this.pendingDeletes--
-                onFail?.()
-                this.refreshStatus()
-                this.showError(key, `Tocco non eliminato (${this.touchLabel(touch)}): riprova`, err)
-            }
-        })
-    }
-
-    private onTouchDeleted(touch: TrackedTouch, key: string): void {
-        this.pendingDeletes--
-        this.touches = this.touches.filter(t => t.id !== touch.id)
+    // A touch still waiting is simply not sent; one already on the server is deleted there.
+    // Its point, if it scored, is taken back (only if nothing changed the score after it)
+    deleteTouch(touch: TrackedTouch): void {
+        const id = this.matchId
+        if (!id || this.locked) return
+        if (!this.record(() => this.outbox.removeTouch(id, touch, this.writer))) return
+        this.touches = this.touches.filter(t => t !== touch)
         this.revertPointOf(touch.client_id)
+        this.clearError('touch')
         this.updateSuggestion()
         this.saveState()
-        console.log('Tocco eliminato', touch.id)
-        this.clearError(key)
-        this.refreshStatus()
         this.cdr.detectChanges()
     }
 
     // Create new touch
-    // Returns the client id of the touch sent, or null
+    // Returns the client id of the touch recorded, or null
     registerNewTouch(event: {fundamental: string; outcome: string}): string | null {
         const currentSet = this.globalService.currentSet()
-        if(!currentSet || !currentSet.id || this.endSetClicked || this.endingSet || this.locked) {
+        const id = this.matchId
+        if(!currentSet || !currentSet.id || !id || this.endSetClicked || this.locked) {
             this.showError('touch', 'Nessun set attivo: tocco non registrato')
             return null
         }
-        this.newTouch.set = currentSet.id
-        if(this.selectedPlayer)
-            this.newTouch.player = this.selectedPlayer.id
-        this.newTouch.fundamental = event.fundamental
-        this.newTouch.outcome = event.outcome
-        // if form is valid
-        if((this.newTouch.fundamental != "") && (this.newTouch.outcome != "")) {
-            const clientId = newClientId()
-            this.sendTouch({ ...this.newTouch, client_id: clientId, seq: ++this.touchSeq, rally: this.rallySeq })
-            this.newTouch = {id: -1, set: -1, player: -1, fundamental: '', outcome: ''}
-            return clientId
-        }
-        return null
-    }
-
-    private sendTouch(touch: TrackedTouch): void {
-        const { seq, rally, uncertain, ...payload } = touch
-        this.pendingTouches = [...this.pendingTouches, touch]
+        if (!this.selectedPlayer || !event.fundamental || !event.outcome) return null
+        const touch: TrackedTouch = { id: -1, set: currentSet.id, player: this.selectedPlayer.id, fundamental: event.fundamental,
+            outcome: event.outcome, client_id: newClientId(), seq: ++this.touchSeq, rally: this.rallySeq }
+        const { id: _, seq, rally, ...payload } = touch
+        if (!this.record(() => this.outbox.enqueue('touch', id, payload, this.writer))) return null
+        this.touches = [...this.touches, touch]
+        this.clearError('touch')
+        this.clearError('rally')
         this.saveState() // an unsent touch survives a reload
-        this.touchesService.createTouch({ ...payload, writer: this.writer }).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
-            next: (res) => {
-                console.log(res)
-                // The entry may have been re-tagged meanwhile (undo of a point): use its current rally
-                const current = this.pendingTouches.find(t => t.client_id === touch.client_id) ?? touch
-                this.pendingTouches = this.pendingTouches.filter(t => t.client_id !== touch.client_id)
-                // A late answer for a set that is already over is saved but not shown
-                if (touch.set === this.globalService.currentSet()?.id)
-                    this.touches = [...this.touches, { ...res, seq, rally: current.rally }].sort((a, b) => a.seq - b.seq)
-                this.clearError('touch')
-                this.clearError('rally')
-                this.refreshStatus()
-                this.saveState()
-                this.cdr.detectChanges()
-            },
-            error: (err) => {
-                console.error('Errore salvataggio nuovo tocco', err)
-                const current = this.pendingTouches.find(t => t.client_id === touch.client_id) ?? touch
-                this.pendingTouches = this.pendingTouches.filter(t => t.client_id !== touch.client_id)
-                this.failedTouches = [...this.failedTouches, { ...current, uncertain: current.uncertain || err?.name === 'TimeoutError' }]
-                if (err?.status === 409) this.setReadOnly(OTHER_DEVICE)
-                this.refreshStatus()
-                this.saveState()
-                this.cdr.detectChanges()
-            }
-        });
-    }
-
-    // Safe to retry: the client_id makes the server return the touch if it already has it
-    retryFailedTouches(): void {
-        const toRetry = this.failedTouches
-        this.failedTouches = []
-        this.clearError('discard') // a re-sent touch is kept, so an earlier discard failure no longer applies
-        toRetry.forEach(t => this.sendTouch(t))
-        this.refreshStatus()
-    }
-
-    discardFailedTouches(): void {
-        if (!confirm('Scartare i tocchi non salvati?')) return
-        this.dropUnsaved(this.failedTouches)
-    }
-
-    private dropUnsaved(list: TrackedTouch[]): void {
-        if (list.some(t => t.uncertain)) this.clearError('discard') // a new attempt replaces the old failure
-        this.failedTouches = this.failedTouches.filter(t => !list.includes(t))
-        list.filter(t => t.uncertain).forEach(t => this.removeUncertainTouch(t))
-        // A touch never saved has no delete: take back its point here
-        list.filter(t => !t.uncertain).sort((a, b) => b.seq - a.seq).forEach(t => this.revertPointOf(t.client_id))
-        this.refreshStatus()
-        this.updateSuggestion()
-        this.saveState()
-    }
-
-    // A touch that timed out may exist on the server anyway: re-send it (same client_id,
-    // so the server returns it instead of saving it twice) and delete what comes back
-    private removeUncertainTouch(touch: TrackedTouch): void {
-        const { seq, rally, uncertain, ...payload } = touch
-        this.pendingDeletes++
-        this.touchesService.createTouch({ ...payload, writer: this.writer }).pipe(timeout(REQUEST_TIMEOUT_MS)).subscribe({
-            next: (res) => {
-                this.pendingDeletes--
-                // If the delete fails, the touch goes back to the unsaved list so Scarta can try again
-                this.deleteTouch({ ...res, seq, rally }, () => {
-                    this.failedTouches = [...this.failedTouches, touch]
-                }, 'discard')
-            },
-            error: (err) => {
-                this.pendingDeletes--
-                this.failedTouches = [...this.failedTouches, touch]
-                this.refreshStatus()
-                this.showError('discard', 'Tocco incerto non scartato: riprova più tardi', err)
-            }
-        })
-    }
-
-    // Status messages that only make sense while something is pending or unsaved
-    private refreshStatus(): void {
-        if (!this.busy) {
-            this.clearError('busy')
-            this.clearError('pending')
-        }
-        if (this.failedTouches.length === 0) this.clearError('unsaved')
+        return touch.client_id as string
     }
 
     // Manual rotation (correction): the player in position 2 goes to 1, 1 goes to 6, ...
@@ -1379,36 +1217,24 @@ export class GameComponent implements OnInit, OnDestroy{
         
     }
     
+    // The set exists at once on this device with a temporary id; the outbox creates it on the server
+    // and everything recorded in it meanwhile follows
     createSet(set: Set) {
-        
         const lastResult = this.results.at(-1)
-        if(lastResult && lastResult.home_score === 0 && lastResult.guest_score === 0 && this.setNumber != 1){  
+        const id = this.matchId
+        if(lastResult && lastResult.home_score === 0 && lastResult.guest_score === 0 && this.setNumber != 1){
             this.showError('set', 'Il set precedente è finito 0-0: nuovo set non creato')
             return
-        }else if (!this.creatingSet){  
-            this.creatingSet = true
-            this.globalService.currentSet.set(null) // no touch can go to the old set meanwhile
-            this.setsService.createSet({ ...this.newSet, writer: this.writer }).subscribe({
-                next: (res) => {
-                    this.creatingSet = false
-                    this.clearError('set')
-                    this.clearError('touch')
-                    this.clearError('match')
-                    this.globalService.currentSet.set(res);
-                    this.cdr.detectChanges()
-                    console.log(res)
-                    this.resetVariables()
-                },
-                error: (err) => {
-                    this.creatingSet = false
-                    if (err?.status === 409) {
-                        this.setReadOnly('La partita è terminata: non si possono aggiungere set')
-                        return
-                    }
-                    this.showError('set', 'Set non creato: premi NUOVO SET per riprovare', err)
-                }
-            }); 
         }
+        if (!id) return
+        const temp = this.outbox.tempId()
+        const body = { temp, client_id: newClientId(), number: set.number, player_ids: set.player_ids }
+        if (!this.record(() => this.outbox.enqueue('set', id, body, this.writer))) return
+        this.clearError('set')
+        this.clearError('touch')
+        this.clearError('match')
+        this.globalService.currentSet.set({ ...set, id: temp })
+        this.resetVariables()
     }
 
     resetVariables() {
@@ -1476,123 +1302,66 @@ export class GameComponent implements OnInit, OnDestroy{
     endSet() {
         // Update set
         const currentSet = this.globalService.currentSet()
-        if(!currentSet || !currentSet.id){
+        const id = this.matchId
+        if(!currentSet || !currentSet.id || !id){
             this.showError('set', 'Nessun set attivo da chiudere')
             return
         }
-    
         const updatedScores = {
             home_score: this.score.home,
             guest_score: this.score.guests
         }
-        this.endingSet = true
-        this.setsService.updateSet(currentSet.id, { ...updatedScores, writer: this.writer }).subscribe({
-            next: (res) => {
-                console.log("Set aggiornato con i punteggi:", res)
-                this.endingSet = false
-                this.clearError('set')
-                // Recorded only once the server has it, so a retry does not duplicate it
-                this.results = [...this.results, updatedScores]
-                this.endSetClicked = true
-                this.selectedPlayer = null
-                this.scoreEvents = []
-                const won = matchWinner(this.results, this.format)
-                if (won) {
-                    const sets = setsWon(this.results)
-                    this.showInfo(`Partita vinta da ${won === 'home' ? 'CASA' : 'OSPITI'} ${sets.home}-${sets.guests}: premi FINE MATCH`, 10000)
-                }
-                this.handleNextSet()
-                this.saveState()
-            },
-            error: (err) => {
-                this.endingSet = false
-                if (err?.status === 409) {
-                    this.setReadOnly(OTHER_DEVICE)
-                    return
-                }
-                this.showError('set', 'Punteggio del set non salvato: premi FINE SET per riprovare', err)
-            }
-        });
-    }
-
-    updateMatchResults(results: { home_score: number; guest_score: number }[]) {
-        const match = this.globalService.currentMatch()
-        if(!match || !match.id)
-            this.showError('match', 'Nessuna partita a cui salvare i risultati')
-        else
-        this.matchesService.updateMatch(match.id, { results: results, live_state: null, writer: this.writer }).subscribe({
-            next: (res) => {
-                console.log("Risultati aggiornati:", res)
-                try { localStorage.removeItem(STATE_KEY + match.id) } catch {}
-                this.globalService.resetAll()
-                this.router.navigate(['/'])
-            },
-            error: (err) => {
-                this.endingMatch = false
-                if (err?.status === 409) {
-                    this.setReadOnly(OTHER_DEVICE)
-                    return
-                }
-                this.showError('match', 'Risultati della partita non salvati: premi FINE MATCH per riprovare', err)
-            }
-    })
+        if (!this.record(() => this.outbox.enqueue('setScore', id, { set: currentSet.id, ...updatedScores }, this.writer))) return
+        this.clearError('set')
+        this.results = [...this.results, updatedScores]
+        this.endSetClicked = true
+        this.selectedPlayer = null
+        this.scoreEvents = []
+        const won = matchWinner(this.results, this.format)
+        if (won) {
+            const sets = setsWon(this.results)
+            this.showInfo(`Partita vinta da ${won === 'home' ? 'CASA' : 'OSPITI'} ${sets.home}-${sets.guests}: premi FINE MATCH`, 10000)
+        }
+        this.handleNextSet()
+        this.saveState()
     }
 
     // A set opened (NUOVO SET) but never played
     get currentSetUnstarted(): boolean {
-        return this.hasActiveSet && !this.endSetClicked && this.score.home === 0 && this.score.guests === 0
-            && this.touches.length === 0 && this.pendingTouches.length === 0
+        return this.hasActiveSet && !this.endSetClicked && this.score.home === 0 && this.score.guests === 0 && this.touches.length === 0
     }
 
     get canEndMatch(): boolean {
-        return !this.endingMatch && !this.creatingSet && !this.endingSet && this.results.length > 0
+        return !this.endingMatch && this.results.length > 0
             && (this.endSetClicked || this.currentSetUnstarted || !this.hasActiveSet)
     }
 
     confirmEndMatch() {
-        if (this.failedTouches.length > 0) {
-            this.showError('unsaved', 'Ci sono tocchi non salvati: premi Riprova o Scarta prima di terminare')
-            return
-        }
-        if (this.busy || this.unsentRallies.length > 0 || this.unsentRallyDeletes.length > 0 || this.unsentEvents.length > 0) {
-            this.showError('pending', 'Salvataggio in corso: attendi e premi di nuovo FINE MATCH')
-            return
-        }
         const emptySet = this.currentSetUnstarted ? ' Il set vuoto appena aperto verrà eliminato.' : ''
         if (!confirm(`Terminare la partita?${emptySet} Non potrai più registrare tocchi.`)) return
         this.endMatch()
     }
 
-    // The last played set is already saved by FINE SET; an empty set opened by mistake is removed
+    // The last played set is already recorded by FINE SET; an empty set opened by mistake is removed.
+    // Everything waits in the outbox: the match can be ended without a connection
     endMatch() {
-        this.endingMatch = true
+        const id = this.matchId
+        if (!id) {
+            this.showError('match', 'Nessuna partita a cui salvare i risultati')
+            return
+        }
         clearTimeout(this.saveTimer) // a late live-state save must not bring the match back
         this.saveTimer = null
+        this.queuedState = null
         const current = this.globalService.currentSet()
-        if (!this.endSetClicked && current?.id) {
-            this.setsService.deleteSet(current.id, this.writer).subscribe({
-                next: () => this.afterEmptySetRemoved(),
-                error: (err) => {
-                    if (err?.status === 404) {
-                        this.afterEmptySetRemoved()
-                        return
-                    }
-                    this.endingMatch = false
-                    if (err?.status === 409) {
-                        this.setReadOnly(OTHER_DEVICE)
-                        return
-                    }
-                    this.showError('match', 'Set vuoto non eliminato: premi FINE MATCH per riprovare', err)
-                }
-            })
-        } else {
-            this.updateMatchResults(this.results)
-        }
-    }
-
-    private afterEmptySetRemoved(): void {
-        this.globalService.currentSet.set(null)
-        this.endSetClicked = true // back to the state after the last FINE SET, in case saving the results fails
-        this.updateMatchResults(this.results)
+        const ended = this.record(() => {
+            if (!this.endSetClicked && current?.id) this.outbox.removeSet(id, current.id, this.writer)
+            this.outbox.enqueue('results', id, { results: this.results }, this.writer)
+        })
+        if (!ended) return
+        this.endingMatch = true
+        try { localStorage.removeItem(STATE_KEY + id) } catch {}
+        this.globalService.resetAll()
+        this.router.navigate(['/'])
     }
 }

@@ -18,7 +18,7 @@
             <a [routerLink]="['/players']" routerLinkActive="router-link-active" class="list-group-item"><img src="/icons/player-icon.png"> Giocatori</a>
             <a [routerLink]="['/teams']" routerLinkActive="router-link-active" class="list-group-item"><img src="/icons/team-icon.png"> Squadre</a>
             <a [routerLink]="['/statistics']" routerLinkActive="router-link-active" class="list-group-item"><img src="/icons/stats-icon.png"> Stats</a>
-            <button type="button" class="list-group-item list-group-item-action mt-4" (click)="auth.logout()"><img src="/icons/logout-icon.png"> Logout</button>
+            <button type="button" class="list-group-item list-group-item-action mt-4" (click)="outbox.logout()"><img src="/icons/logout-icon.png"> Logout</button>
         </div>
     </div>
 

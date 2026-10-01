@@ -3,6 +3,7 @@ import { RouterModule } from '@angular/router'
 import { GlobalService } from '../../services/globalService'
 import { AuthService } from '../../services/authService'
 import { PwaService } from '../../services/pwaService'
+import { OutboxService } from '../../services/outboxService'
 import { NewMatchModalComponent } from '../matches/newMatchModal/newMatchModal.component'
 import { NewTeamModalComponent } from '../teams/newTeamModal/newTeamModal.component'
 import { NewPlayerModalComponent } from '../players/newPlayerModal/newPlayerModal.component'
@@ -23,6 +24,7 @@ export class DashboardComponent implements OnInit{
 
   auth = inject(AuthService)
   pwa = inject(PwaService)
+  outbox = inject(OutboxService)
 
   constructor(public globalService: GlobalService) {}
 

@@ -22,9 +22,9 @@ export const routes: Routes = [
   { path: '', canActivateChild: [authGuard], children: [
     { path: '', component: DashboardComponent },
     { path: 'statistics', component: StatisticsComponent },
-    { path: 'game', component: GameComponent, canDeactivate: [(game: GameComponent) => game.canLeave()] },
+    { path: 'game', component: GameComponent },
     // The match id in the URL lets a reload (or another device) resume the match
-    { path: 'game/:matchId', component: GameComponent, canDeactivate: [(game: GameComponent) => game.canLeave()] },
+    { path: 'game/:matchId', component: GameComponent },
     { path: 'thanks', component: ThanksComponent },
     // Read-only live stats for the bench, on another device
     { path: 'bench/:matchId', component: BenchComponent },

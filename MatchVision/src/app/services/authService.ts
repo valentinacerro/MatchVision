@@ -5,6 +5,7 @@ import { catchError, map, Observable, throwError } from 'rxjs'
 import { Account } from '../Models/User'
 import { API_URL } from './apiConfig'
 import { GlobalService } from './globalService'
+import { clearOfflineCache } from './offlineCache'
 
 const TOKEN_KEY = 'matchvision.token'
 const USER_KEY = 'matchvision.user'
@@ -63,6 +64,9 @@ export class AuthService {
     async logout(): Promise<void> {
         if (!(await this.router.navigateByUrl('/login'))) return
         const token = this.tokenValue
+        // Leaving this device: the copies kept for offline use go too
+        const user = this.user()?.id
+        if (user !== undefined) clearOfflineCache(user)
         this.clear()
         // Ends the session of this device on the server too; other devices stay logged in
         if (token) this.http.post(`${this.apiUrl}/auth/logout/`, {}, { headers: { Authorization: `Token ${token}` } }).subscribe({ error: () => {} })
