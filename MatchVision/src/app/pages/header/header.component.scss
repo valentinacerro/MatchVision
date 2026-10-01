@@ -13,6 +13,17 @@
     width: 100%;
     z-index: 1000;
 
+    .offline-badge {
+        margin-right: 0.75rem;
+        background-color: #ffc107;
+        color: #212529;
+        font-size: 0.85rem;
+    }
+
+    .install-btn {
+        margin-right: 0.75rem;
+    }
+
     .account {
         max-width: 40vw;
         margin-right: 0.5rem;
@@ -50,4 +61,20 @@
     } &:hover{
         cursor: pointer;
     }
+}
+
+.update-toast {
+    position: fixed;
+    top: 68px;
+    right: 12px;
+    z-index: 2100;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    max-width: calc(100vw - 24px);
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    background-color: #253f60;
+    color: white;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
 }

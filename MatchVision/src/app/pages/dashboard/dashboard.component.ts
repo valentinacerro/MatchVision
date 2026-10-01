@@ -1,6 +1,8 @@
-import { Component, OnInit, ViewChild } from '@angular/core'
+import { Component, OnInit, ViewChild, inject } from '@angular/core'
 import { RouterModule } from '@angular/router'
 import { GlobalService } from '../../services/globalService'
+import { AuthService } from '../../services/authService'
+import { PwaService } from '../../services/pwaService'
 import { NewMatchModalComponent } from '../matches/newMatchModal/newMatchModal.component'
 import { NewTeamModalComponent } from '../teams/newTeamModal/newTeamModal.component'
 import { NewPlayerModalComponent } from '../players/newPlayerModal/newPlayerModal.component'
@@ -18,6 +20,9 @@ import { NewPlayerModalComponent } from '../players/newPlayerModal/newPlayerModa
     styleUrls: ['./dashboard.component.scss']
 })
 export class DashboardComponent implements OnInit{
+
+  auth = inject(AuthService)
+  pwa = inject(PwaService)
 
   constructor(public globalService: GlobalService) {}
 

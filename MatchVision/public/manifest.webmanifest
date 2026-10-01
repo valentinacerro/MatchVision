@@ -1,0 +1,16 @@
+{
+  "name": "MatchVision",
+  "short_name": "MatchVision",
+  "description": "Scout di pallavolo: tocchi, punteggio e statistiche dal vivo",
+  "lang": "it",
+  "display": "standalone",
+  "scope": "./",
+  "start_url": "./",
+  "theme_color": "#253f60",
+  "background_color": "#f5f5f5",
+  "icons": [
+    { "src": "app-icon/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "app-icon/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "app-icon/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

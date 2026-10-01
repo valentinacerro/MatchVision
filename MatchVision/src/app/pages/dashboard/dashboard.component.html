@@ -13,16 +13,23 @@
             <h4>Menu</h4>
         </div>
         <div class="list-group list-group-flush">
-            <a [routerLink]="['/login']" routerLinkActive="router-link-active" class="list-group-item"><img src="/icons/profile-icon.png"> Profilo</a>
+            <div class="list-group-item account-item" [title]="auth.user()?.email ?? ''"><img src="/icons/profile-icon.png"> <span>{{ auth.user()?.name || auth.user()?.email }}</span></div>
             <a [routerLink]="['/matches']" routerLinkActive="router-link-active" class="list-group-item"><img src="/icons/match-icon.png"> Partite</a>
             <a [routerLink]="['/players']" routerLinkActive="router-link-active" class="list-group-item"><img src="/icons/player-icon.png"> Giocatori</a>
             <a [routerLink]="['/teams']" routerLinkActive="router-link-active" class="list-group-item"><img src="/icons/team-icon.png"> Squadre</a>
             <a [routerLink]="['/statistics']" routerLinkActive="router-link-active" class="list-group-item"><img src="/icons/stats-icon.png"> Stats</a>
-            <a [routerLink]="['/login']" routerLinkActive="router-link-active" class="list-group-item mt-4"><img src="/icons/logout-icon.png"> Logout</a>
+            <button type="button" class="list-group-item list-group-item-action mt-4" (click)="auth.logout()"><img src="/icons/logout-icon.png"> Logout</button>
         </div>
     </div>
 
     <div class="container-dashboard">
+        <!-- iPad and iPhone have no install button: Safari's Share menu does it -->
+        @if (pwa.iosHint()) {
+            <div class="alert alert-info alert-dismissible install-hint" role="status">
+                Per usare MatchVision come app: tocca <strong>Condividi</strong> e poi <strong>Aggiungi alla schermata Home</strong>.
+                <button type="button" class="btn-close" aria-label="Chiudi" (click)="pwa.dismissIosHint()"></button>
+            </div>
+        }
         <div class="row g-4">
 
         <!-- Card 1: Squadre -->

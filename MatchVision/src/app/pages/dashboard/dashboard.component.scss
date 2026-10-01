@@ -26,6 +26,19 @@ body {
     gap: 1rem;
 }
 
+// The logged-in account (not a link): long emails are cut
+#sidebar .account-item span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#sidebar .account-item:hover {
+    background: none;
+    color: #d1d5db;
+}
+
 #sidebar .list-group-item img {
     width: 2rem;
 }

@@ -29,6 +29,24 @@ npx ng serve
 
 L'app chiama l'API sulla porta 8001 dello stesso host da cui è aperta.
 
+## App installabile (PWA)
+
+MatchVision si installa sul tablet o sul PC come un'app e si apre anche senza connessione.
+Il service worker c'è solo nella build di produzione; per provarla in locale:
+
+```bash
+cd MatchVision
+npm run preview        # build + http://localhost:4300
+```
+
+- **Chrome, Edge, Android:** pulsante **Installa** in alto.
+- **iPad, iPhone:** in Safari, **Condividi → Aggiungi alla schermata Home**.
+- **Senza rete** l'app si apre e mostra **Offline**; per ora i dati arrivano solo con la connessione.
+- **Nuova versione:** compare l'avviso **Aggiorna**. Non si ricarica mai da sola, così non interrompe uno scout.
+
+Da un tablet sulla rete locale (`http://192.168…`) l'app funziona, ma i browser permettono installazione
+e avvio offline solo in HTTPS (o su `localhost`): servirà la versione online.
+
 ## Account
 
 Ogni utente si registra dall'app (email e password) e vede solo i propri giocatori, squadre e partite.

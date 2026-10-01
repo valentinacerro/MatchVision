@@ -2,6 +2,14 @@
 
     <h1 class="app-title" [routerLink]="['/']">MatchVision</h1>
 
+    @if (pwa.offline()) {
+        <span class="badge offline-badge" title="Nessuna connessione: l'app si apre, ma i dati non arrivano al server">Offline</span>
+    }
+
+    @if (pwa.canInstall()) {
+        <button type="button" class="btn btn-sm btn-outline-light install-btn" (click)="pwa.install()">Installa</button>
+    }
+
     @if (auth.user(); as user) {
         <span class="account" [title]="user.email">{{ user.name || user.email }}</span>
         <button type="button" class="logout-btn" title="Esci" (click)="logout()">
@@ -10,3 +18,12 @@
     }
 
 </header>
+
+<!-- A new version is ready: it is used after a reload, when the user chooses (never in the middle of a rally) -->
+@if (pwa.updateReady() && !updateLater()) {
+    <div class="update-toast" role="status">
+        <span>Nuova versione disponibile</span>
+        <button type="button" class="btn btn-sm btn-light" (click)="pwa.update()">Aggiorna</button>
+        <button type="button" class="btn-close btn-close-white" aria-label="Più tardi" (click)="updateLater.set(true)"></button>
+    </div>
+}
