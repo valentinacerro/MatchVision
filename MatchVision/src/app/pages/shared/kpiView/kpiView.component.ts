@@ -110,6 +110,6 @@ export class KpiViewComponent implements OnChanges {
     }
 
     pct(value: number | null | undefined): string {
-        return value === null || value === undefined ? '–' : `${value}%`
+        return value === null || value === undefined ? '–' : `${String(value).replace('.', ',')}%`
     }
 }

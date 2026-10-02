@@ -1,0 +1,35 @@
+.filters {
+    display: flex;
+    flex-direction: row; // .card is a column
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.team-select {
+    width: auto;
+    min-width: 12rem;
+}
+
+.date {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+
+    input { width: auto; }
+}
+
+.record {
+    display: flex;
+    gap: 2rem;
+    font-size: 1.15rem;
+}
+
+.trends {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+}
+
+.matches-table .won { color: #198754; font-weight: 700; }
+.matches-table .lost { color: #b02a37; font-weight: 700; }

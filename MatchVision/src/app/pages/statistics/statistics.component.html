@@ -1,5 +1,68 @@
-<h1 class="text-2xl font-bold mb-3">📊 Statistiche</h1>
-<p class="text-gray-600">
-    Vuoi scoprire come stanno andando i tuoi <strong>giocatori</strong>, i tuoi <strong>match</strong> o la tua <strong>squadra</strong>?  
-    Torna alla <a [routerLink]="['/']" class="text-black-600 font-medium hover:underline">Home</a> e scegli cosa analizzare.  
-</p>
+<div class="container my-4 season">
+    <h1 class="h3 mb-3">Statistiche di stagione</h1>
+
+    <div class="card shadow-sm p-3 mb-3 filters">
+        <select class="form-select team-select" aria-label="Squadra" (change)="setTeam($any($event.target).value)">
+            <option value="" [selected]="team === null">Tutte le squadre</option>
+            @for (t of globalService.allTeams(); track t.id) {
+                <option [value]="t.id" [selected]="team === t.id">{{ t.name }}</option>
+            }
+        </select>
+        <div class="btn-group" role="group" aria-label="Periodo">
+            <button type="button" class="btn" [class.btn-dark]="period === 'season'" [class.btn-outline-dark]="period !== 'season'" (click)="setPeriod('season')">Stagione {{ seasonLabel }}</button>
+            <button type="button" class="btn" [class.btn-dark]="period === 'last30'" [class.btn-outline-dark]="period !== 'last30'" (click)="setPeriod('last30')">Ultimi 30 giorni</button>
+            <button type="button" class="btn" [class.btn-dark]="period === 'all'" [class.btn-outline-dark]="period !== 'all'" (click)="setPeriod('all')">Tutte</button>
+        </div>
+        <label class="date">Dal <input type="date" class="form-control" [value]="from" (change)="setDate('from', $any($event.target).value)"></label>
+        <label class="date">Al <input type="date" class="form-control" [value]="to" (change)="setDate('to', $any($event.target).value)"></label>
+    </div>
+
+    @if (loading && !stats) {
+        <p class="text-muted">Caricamento…</p>
+    } @else if (error) {
+        <div class="alert alert-danger">{{ error }}</div>
+    } @else if (stats && stats.matches.length === 0) {
+        <p class="text-muted">Nessuna partita in questo periodo.</p>
+    } @else if (stats) {
+        <div class="card shadow-sm p-3 mb-3">
+            <div class="record mb-3">
+                <span><strong>{{ stats.matches.length }}</strong> {{ stats.matches.length === 1 ? 'partita' : 'partite' }}</span>
+                <span><strong>{{ record[0] }}</strong> vinte · <strong>{{ record[1] }}</strong> perse</span>
+            </div>
+            <!-- How the numbers went match after match -->
+            <div class="trends mb-3">
+                <app-trend-chart title="Punti" [values]="series.points" color="#253f60"></app-trend-chart>
+                <app-trend-chart title="Hit% squadra" [values]="series.hit" unit="%" [decimals]="1" color="#fd7e14"></app-trend-chart>
+                <app-trend-chart title="Media ricezione (0-3)" [values]="series.reception" [decimals]="2" color="#198754"></app-trend-chart>
+                <app-trend-chart title="Side-out" [values]="series.sideout" unit="%" [decimals]="1" color="#0d6efd"></app-trend-chart>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle text-center matches-table">
+                    <thead>
+                        <tr><th>Data</th><th class="text-start">Partita</th><th>Set</th><th>Punti</th><th>Errori</th><th>Hit%</th>
+                            <th>Ricezione</th><th>Ace</th><th>Side-out</th><th>Break-point</th></tr>
+                    </thead>
+                    <tbody>
+                        @for (t of trend; track t.id) {
+                            <tr>
+                                <td>{{ t.date.toLocaleDateString('it-IT') }}</td>
+                                <td class="text-start"><a [routerLink]="['/match_details', t.id]">{{ t.name }}</a></td>
+                                <td [class.won]="t.setsWon[0] > t.setsWon[1]" [class.lost]="t.setsWon[1] > t.setsWon[0]">{{ t.setsWon[0] }}-{{ t.setsWon[1] }}</td>
+                                <td>{{ t.box?.points ?? '–' }}</td><td>{{ t.box?.errors ?? '–' }}</td>
+                                <td>{{ t.box?.attack?.tot ? pct(t.box!.attack.hitPct) : '–' }}</td>
+                                <td>{{ t.box?.reception?.tot ? num(t.box!.reception.avg) : '–' }}</td>
+                                <td>{{ t.box?.serve?.aces ?? '–' }}</td>
+                                <td>{{ pct(t.sideout) }}</td><td>{{ pct(t.breakpoint) }}</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card shadow-sm p-3 mb-5">
+            <h2 class="h5 mb-3">Totali del periodo</h2>
+            <app-kpi-view [rows]="stats.kpi" [rallies]="stats.rallies" [map]="stats.map"></app-kpi-view>
+        </div>
+    }
+</div>

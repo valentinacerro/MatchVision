@@ -80,12 +80,16 @@ python manage.py assign_orphans tua@email.it
 Da **Dettagli** di una partita, **Report PDF** apre il report su due pagine A4 (box score, set per set, punti per motivo,
 side-out e break-point, grafici delle zone): **Stampa / Salva come PDF**.
 
-Per avere dati da mostrare, una partita completa di 4 set (rally, motivi dei punti, zone) per un account:
+Per avere dati da mostrare, partite complete (rally, motivi dei punti, zone) per un account; con `--matches 8`
+otto partite, una alla settimana fino a oggi, per provare anche **Stats** (stagione) e lo storico dei giocatori:
 
 ```bash
 cd backend
-python manage.py seed_demo tua@email.it
+python manage.py seed_demo tua@email.it --matches 8
 ```
+
+**Stats** (menu della dashboard) somma più partite, per squadra e periodo, con l'andamento partita per partita;
+la pagina di un giocatore mostra i suoi numeri di ogni partita e del totale.
 
 ## Test
 

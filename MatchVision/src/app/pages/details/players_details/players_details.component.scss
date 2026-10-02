@@ -27,3 +27,28 @@
 .single-match:hover {
     cursor: pointer;
 }
+
+// Season numbers of the player at a glance
+.totals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+
+    > div {
+        flex: 1 1 5.5rem;
+        padding: 0.5rem 0.75rem;
+        border-radius: 0.5rem;
+        background-color: #f1f3f5;
+        text-align: center;
+    }
+
+    span { display: block; color: #495057; font-size: 0.9rem; }
+    strong { display: block; font-size: 1.5rem; }
+    small { color: #6c757d; }
+}
+
+.trends {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+}

@@ -17,6 +17,54 @@
         </div>
     </div>
 
+    <!-- Statistics: over all the matches and match by match -->
+    @if (historyLoaded) {
+        <div class="card shadow-sm border-0 rounded-3 mb-4">
+            <div class="card-body">
+                <h2 class="h4 mb-3">Statistiche</h2>
+                @if (total) {
+                    <div class="totals mb-3">
+                        <div><span>Partite</span><strong>{{ history.length }}</strong></div>
+                        <div><span>Punti</span><strong>{{ total.points }}</strong></div>
+                        <div><span>Saldo</span><strong>{{ total.balance > 0 ? '+' + total.balance : total.balance }}</strong></div>
+                        <div><span>Ace</span><strong>{{ total.serve.aces }}</strong></div>
+                        <div><span>Ricezione</span><strong>{{ total.reception.tot ? num(total.reception.avg) : '–' }}</strong><small>{{ total.reception.tot }} ricezioni</small></div>
+                        <div><span>Hit%</span><strong>{{ total.attack.tot ? pct(total.attack.hitPct) : '–' }}</strong><small>{{ total.attack.tot }} attacchi</small></div>
+                        <div><span>Muri</span><strong>{{ total.blocks }}</strong></div>
+                    </div>
+                    <div class="trends mb-3">
+                        <app-trend-chart title="Punti per partita" [values]="series.points" color="#253f60"></app-trend-chart>
+                        <app-trend-chart title="Hit%" [values]="series.hit" unit="%" [decimals]="1" color="#fd7e14"></app-trend-chart>
+                        <app-trend-chart title="Media ricezione (0-3)" [values]="series.reception" [decimals]="2" color="#198754"></app-trend-chart>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle text-center">
+                            <thead>
+                                <tr><th>Data</th><th class="text-start">Partita</th><th>Punti</th><th>Err</th><th>Saldo</th><th>Ace</th>
+                                    <th>Ric.</th><th>Media</th><th>Att.</th><th>Kill</th><th>Hit%</th><th>Muri</th></tr>
+                            </thead>
+                            <tbody>
+                                @for (h of history; track h.id) {
+                                    <tr>
+                                        <td>{{ h.date.toLocaleDateString('it-IT') }}</td>
+                                        <td class="text-start"><a [routerLink]="['/match_details', h.id]">{{ h.name }}</a><span class="text-muted small ms-2">{{ h.team }} · {{ h.setsWon[0] }}-{{ h.setsWon[1] }}</span></td>
+                                        <td class="fw-bold">{{ h.box.points }}</td><td>{{ h.box.errors }}</td>
+                                        <td>{{ h.box.balance > 0 ? '+' + h.box.balance : h.box.balance }}</td><td>{{ h.box.serve.aces }}</td>
+                                        <td>{{ h.box.reception.tot || '' }}</td><td>{{ h.box.reception.tot ? num(h.box.reception.avg) : '' }}</td>
+                                        <td>{{ h.box.attack.tot || '' }}</td><td>{{ h.box.attack.tot ? h.box.attack.kills : '' }}</td>
+                                        <td>{{ h.box.attack.tot ? pct(h.box.attack.hitPct) : '' }}</td><td>{{ h.box.blocks || '' }}</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                } @else {
+                    <p class="text-muted mb-0">Nessun tocco registrato per {{ player?.name }}.</p>
+                }
+            </div>
+        </div>
+    }
+
     <!-- Matches -->
         <div class="card shadow-sm border-0 rounded-3 mb-4">
             <div class="card-body">
@@ -29,7 +77,7 @@
                             <div class="col-md-6 single-match" [routerLink]="['/match_details/', match.id]" routerLinkActive="router-link-active">
                                 <div class="border rounded-3 p-3 bg-light h-100">
                                     <h5 class="mb-1">{{ match.name }}</h5>
-                                    <p class="text-muted mb-0">Risultati: <strong>{{ match.result }}</strong></p>
+                                    <p class="text-muted mb-0">Risultato: <strong>{{ setsLabel(match) }}</strong></p>
                                 </div>
                             </div>
                         }
