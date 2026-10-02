@@ -7,6 +7,8 @@ from django.contrib.auth import authenticate
 from django.http import JsonResponse
 from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
+from rest_framework.exceptions import ValidationError
+import datetime
 
 from .auth import issue_token
 from .models import Player, Team, Match, Set, Touch, Rally, Event
@@ -622,6 +624,62 @@ def getMatchRallyStats(request, pk):
 def getSetRallyStats(request, pk):
     own_set(request, pk)
     return Response(create_rally_table(Rally.objects.filter(set_id=pk)))
+
+
+# SEASON: several matches together (a team, a period) and how they went one after the other
+def sets_won(match):
+    sets = list(match.sets.all())
+    return [sum(s.home_score > s.guest_score for s in sets), sum(s.guest_score > s.home_score for s in sets)]
+
+def match_info(match):
+    return {'id': match.id, 'name': match.name, 'timestamp': match.timestamp, 'team_id': match.team_id,
+            'team_name': match.team.name, 'sets_won': sets_won(match)}
+
+def date_param(request, name):
+    value = request.query_params.get(name)
+    if not value:
+        return None
+    try:
+        return datetime.date.fromisoformat(value)
+    except ValueError:
+        raise ValidationError({name: 'Data non valida (AAAA-MM-GG)'})
+
+@api_view(['GET'])
+def getSeasonStats(request):
+    matches = Match.objects.filter(user=request.user).select_related('team').prefetch_related('sets').order_by('timestamp', 'id')
+    team = request.query_params.get('team')
+    if team:
+        matches = matches.filter(team_id=int(team) if team.isdigit() else -1)
+    start, end = date_param(request, 'from'), date_param(request, 'to')
+    if start:
+        matches = matches.filter(timestamp__date__gte=start)
+    if end:
+        matches = matches.filter(timestamp__date__lte=end)
+    ids = [m.id for m in matches]
+    touches = Touch.objects.filter(set__match_id__in=ids)
+    rallies = Rally.objects.filter(set__match_id__in=ids)
+    trend = []
+    for m in matches:
+        match_rallies = create_rally_table(rallies.filter(set__match_id=m.id), by='p1')
+        trend.append({**match_info(m),
+                      'team_rows': [r for r in create_kpi_table(touches.filter(set__match_id=m.id)) if r['team']],
+                      'sideout': match_rallies['sideout']['pct'], 'breakpoint': match_rallies['breakpoint']['pct']})
+    return Response({
+        'matches': [match_info(m) for m in matches],
+        'kpi': create_kpi_table(touches),
+        'rallies': create_rally_table(rallies, by='p1'),
+        'map': touch_map(touches),
+        'trend': trend,
+    })
+
+# A player match by match: the KPI rows of that player in every match with a touch of theirs
+@api_view(['GET'])
+def getPlayerHistory(request, pk):
+    player = get_object_or_404(Player, pk=pk, user=request.user)
+    touches = Touch.objects.filter(player=player, set__match__user=request.user)
+    matches = Match.objects.filter(sets__touches__in=touches).distinct().select_related('team').prefetch_related('sets').order_by('timestamp', 'id')
+    return Response([{'match': match_info(m), 'rows': [r for r in create_kpi_table(touches.filter(set__match=m)) if not r['team']]}
+                     for m in matches])
 
 
 # Serves and attacks with their zones, for the court charts

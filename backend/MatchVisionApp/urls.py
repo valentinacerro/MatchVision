@@ -66,6 +66,10 @@ urlpatterns = [
     path('match_details/<int:pk>/kpi/', views.getMatchKpi),
     path('match_details/sets/<int:pk>/kpi/', views.getSetKpi),
 
+    # Season and player history
+    path('season/stats/', views.getSeasonStats),
+    path('player_details/<int:pk>/history/', views.getPlayerHistory),
+
     # Rallies
     path('rallies/create/', views.createRally),
     path('rallies/delete/<str:client_id>/', views.deleteRally),

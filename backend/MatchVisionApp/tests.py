@@ -319,3 +319,77 @@ class SeedDemoTests(APITestCase):
         call_command('seed_demo', 'demo2@example.com', stdout=StringIO())
         self.assertEqual(Match.objects.filter(user__username='demo2@example.com').count(), 2)
         self.assertEqual(Team.objects.filter(user__username='demo2@example.com').count(), 1)
+
+
+class SeasonTests(APITestCase):
+    """Several matches together, filtered by team and period, and a player match by match."""
+
+    def setUp(self):
+        cache.clear()
+        token = self.client.post('/auth/register/', {'email': 'season@example.com', 'password': 'Pallavolo-2026'}, format='json').data['token']
+        self.api = client_with(token)
+        self.ada = self.api.post('/players/create/', {'name': 'Ada', 'number': 7}, format='json').data['id']
+        self.u16 = self.api.post('/teams/create/', {'name': 'U16', 'playersList': [self.ada]}, format='json').data['id']
+        self.u18 = self.api.post('/teams/create/', {'name': 'U18', 'playersList': [self.ada]}, format='json').data['id']
+        self.m1 = self.match('Andata', self.u16, '2026-09-10T18:00:00Z', [('Attacco', '++'), ('Attacco', '— —')], (25, 20))
+        self.m2 = self.match('Ritorno', self.u16, '2026-10-05T18:00:00Z', [('Attacco', '++'), ('Battuta', '++')], (18, 25))
+        self.m3 = self.match('Torneo', self.u18, '2026-10-06T18:00:00Z', [('Ricezione', '+')], (25, 10))
+
+    def match(self, name, team, when, touches, score):
+        match = self.api.post('/matches/create/', {'name': name, 'team_id': team, 'timestamp': when}, format='json').data['id']
+        set_id = self.api.post('/sets/create/', {'match': match, 'number': 1}, format='json').data['id']
+        self.api.put(f'/sets/update/{set_id}/', {'home_score': score[0], 'guest_score': score[1]}, format='json')
+        for i, (fundamental, outcome) in enumerate(touches):
+            self.api.post('/touches/create/', {'set': set_id, 'player': self.ada, 'fundamental': fundamental, 'outcome': outcome,
+                                               'client_id': f'{name}-{i}'}, format='json')
+        return match
+
+    def test_all_matches_in_date_order(self):
+        data = self.api.get('/season/stats/').data
+        self.assertEqual([m['name'] for m in data['matches']], ['Andata', 'Ritorno', 'Torneo'])
+        self.assertEqual([m['sets_won'] for m in data['matches']], [[1, 0], [0, 1], [1, 0]])
+        attack = next(r for r in data['kpi'] if r['team'] and r['fundamental'] == 'Attacco')
+        self.assertEqual((attack['tot'], attack['++'], attack['— —']), (3, 2, 1))
+        self.assertEqual(len(data['trend']), 3)
+        self.assertTrue(all(r['team'] for r in data['trend'][0]['team_rows']))
+
+    def test_filters(self):
+        by_team = self.api.get(f'/season/stats/?team={self.u16}').data
+        self.assertEqual([m['name'] for m in by_team['matches']], ['Andata', 'Ritorno'])
+        october = self.api.get('/season/stats/?from=2026-10-01&to=2026-10-05').data
+        self.assertEqual([m['name'] for m in october['matches']], ['Ritorno'])
+        self.assertEqual(self.api.get('/season/stats/?from=ieri').status_code, 400)
+
+    def test_player_history(self):
+        history = self.api.get(f'/player_details/{self.ada}/history/').data
+        self.assertEqual([h['match']['name'] for h in history], ['Andata', 'Ritorno', 'Torneo'])
+        first = {r['fundamental']: r for r in history[0]['rows']}
+        self.assertEqual((first['Attacco']['tot'], first['Attacco']['++']), (2, 1))
+        self.assertTrue(all(not r['team'] for h in history for r in h['rows']))
+
+    def test_other_accounts_see_nothing(self):
+        other = client_with(self.client.post('/auth/register/', {'email': 's2@example.com', 'password': 'Pallavolo-2026'}, format='json').data['token'])
+        self.assertEqual(other.get('/season/stats/').data['matches'], [])
+        self.assertEqual(other.get(f'/player_details/{self.ada}/history/').status_code, 404)
+
+
+class DemoScoreTests(APITestCase):
+    """Generated scores are real volleyball scores, and the points reach them without an earlier end."""
+
+    def test_point_order_never_ends_early(self):
+        import random
+        from .management.commands.seed_demo import match_scores, point_order
+        rnd = random.Random(1)
+        for _ in range(200):
+            scores = match_scores(rnd, rnd.uniform(0.3, 0.7))
+            self.assertEqual(max(sum(h > g for h, g in scores), sum(g > h for h, g in scores)), 3)
+            for number, final in enumerate(scores, start=1):
+                target = 15 if number == 5 else 25
+                self.assertTrue(max(final) >= target and abs(final[0] - final[1]) >= 2, final)
+                score = [0, 0]
+                points = point_order(final, target, rnd)
+                for i, won in enumerate(points):
+                    score[0 if won == 'home' else 1] += 1
+                    over = max(score) >= target and abs(score[0] - score[1]) >= 2
+                    self.assertEqual(over, i == len(points) - 1, (final, score, i))
+                self.assertEqual(tuple(score), final)

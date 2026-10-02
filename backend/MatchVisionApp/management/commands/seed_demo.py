@@ -1,3 +1,4 @@
+import datetime
 import random
 import uuid
 
@@ -13,7 +14,7 @@ ROSTER = [
     ('Elena', 'Greco', 9, 'Opposto'), ('Chiara', 'Romano', 11, 'Lato'), ('Laura', 'Gallo', 14, 'Centrale'),
     ('Paola', 'Costa', 5, 'Libero'), ('Anna', 'Fontana', 17, 'Lato'),
 ]
-FINAL_SCORES = [(25, 21), (22, 25), (25, 19), (25, 23)]
+FINAL_SCORES = [(25, 21), (22, 25), (25, 19), (25, 23)]  # the first demo match, always the same
 ZONES = [[4, 3, 2], [7, 8, 9], [5, 6, 1]]  # DataVolley, from the net, seen by the team on that half
 
 
@@ -31,14 +32,53 @@ def attack_zone(role, position):
     return {'Opposto': 9, 'Lato': 8}.get(role, {1: 9, 6: 8, 5: 7}[position])
 
 
+def match_scores(rnd, strength):
+    """Set scores of a best-of-5 match; strength = chance that we win a set."""
+    scores, won = [], [0, 0]
+    while max(won) < 3:
+        target = 15 if len(scores) == 4 else 25
+        if rnd.random() < 0.2:
+            loser = target - 1 + rnd.randint(0, 2)  # won at the advantages: 24-26, 25-27...
+            winner = loser + 2
+        else:
+            loser, winner = rnd.randint(target - 10, target - 2), target
+        home = rnd.random() < strength
+        scores.append((winner, loser) if home else (loser, winner))
+        won[0 if home else 1] += 1
+    return scores
+
+
+def point_order(final, target, rnd):
+    """Who wins each point, ending exactly at the final score with no earlier set point won.
+    target: 25, or 15 in the deciding set."""
+    winner = 'home' if final[0] > final[1] else 'guests'
+    loser = 'guests' if winner == 'home' else 'home'
+    low = min(final)
+    if low < target - 1:
+        # The winner reaches the target only with the last point; the loser never does
+        points = [winner] * (max(final) - 1) + [loser] * low
+        rnd.shuffle(points)
+        return points + [winner]
+    # Advantages: up to the tie one point before the target, then one point each, then the winner twice
+    base = target - 1
+    points = ['home'] * base + ['guests'] * base
+    rnd.shuffle(points)
+    for _ in range(low - base):
+        pair = [winner, loser]
+        rnd.shuffle(pair)
+        points += pair
+    return points + [winner, winner]
+
+
 class Command(BaseCommand):
-    help = "Crea per un account una partita dimostrativa completa (4 set, rally, motivi dei punti, zone)"
+    help = "Crea per un account partite dimostrative complete (rally, motivi dei punti, zone)"
 
     def add_arguments(self, parser):
         parser.add_argument('email', help="Email dell'account")
-        parser.add_argument('--seed', type=int, default=7, help="Stessa partita a ogni esecuzione con lo stesso seed")
+        parser.add_argument('--seed', type=int, default=7, help="Stesse partite a ogni esecuzione con lo stesso seed")
+        parser.add_argument('--matches', type=int, default=1, help="Quante partite, una alla settimana fino a oggi")
 
-    def handle(self, *args, email, seed, **options):
+    def handle(self, *args, email, seed, matches, **options):
         user = get_user_model().objects.filter(username=email.strip().lower()).first()
         if user is None:
             raise CommandError(f"Nessun account con email {email}: registrati prima dall'app")
@@ -55,23 +95,26 @@ class Command(BaseCommand):
                 raise CommandError(f"La Squadra demo di questo account non ha i numeri {missing}")
             lineup = [players[n] for n in (1, 4, 7, 9, 11, 14)]
             libero = players[5]
-            n = Match.objects.filter(user=user, name__startswith='Partita dimostrativa').count() + 1
-            match = Match.objects.create(user=user, team=team, name=f'Partita dimostrativa {n}',
-                                         results=[{'home_score': h, 'guest_score': g} for h, g in FINAL_SCORES])
-            counts = {'touches': 0, 'rallies': 0}
-            for number, final in enumerate(FINAL_SCORES, start=1):
-                self.play_set(match, number, final, lineup, libero, rnd, counts)
+            first = Match.objects.filter(user=user, name__startswith='Partita dimostrativa').count() + 1
+            today = datetime.datetime.now(datetime.timezone.utc).replace(hour=18, minute=0, second=0, microsecond=0)
+            counts = {'touches': 0, 'rallies': 0, 'matches': 0}
+            for i in range(matches):
+                # The first one is always the same; the others change score and form of the team
+                scores = FINAL_SCORES if first + i == 1 else match_scores(rnd, rnd.uniform(0.45, 0.7))
+                form = 1.0 if first + i == 1 else rnd.uniform(0.8, 1.2)
+                match = Match.objects.create(user=user, team=team, name=f'Partita dimostrativa {first + i}',
+                                             timestamp=today - datetime.timedelta(days=7 * (matches - 1 - i)),
+                                             results=[{'home_score': h, 'guest_score': g} for h, g in scores])
+                for number, final in enumerate(scores, start=1):
+                    self.play_set(match, number, final, lineup, libero, rnd, counts, form)
+                counts['matches'] += 1
         self.stdout.write(self.style.SUCCESS(
-            f"Creata «{match.name}» per {user.username}: {len(FINAL_SCORES)} set, {counts['rallies']} punti, {counts['touches']} tocchi"))
+            f"Create {counts['matches']} partite dimostrative per {user.username}: {counts['rallies']} punti, {counts['touches']} tocchi"))
 
-    def play_set(self, match, number, final, lineup, libero, rnd, counts):
+    def play_set(self, match, number, final, lineup, libero, rnd, counts, form=1.0):
         s = Set.objects.create(match=match, number=number, home_score=final[0], guest_score=final[1])
         s.players.set(lineup + [libero])
-        # Who wins each point: shuffled, the set winner takes the last one (the set cannot end before)
-        winner = 'home' if final[0] > final[1] else 'guests'
-        points = ['home'] * (final[0] - (winner == 'home')) + ['guests'] * (final[1] - (winner == 'guests'))
-        rnd.shuffle(points)
-        points.append(winner)
+        points = point_order(final, 15 if number == 5 else 25, rnd)
         serving = 'home' if number % 2 == 1 else 'guests'
         rotation = 0
         score = {'home': 0, 'guests': 0}
@@ -126,7 +169,7 @@ class Command(BaseCommand):
                 hitter, start = attacker()
                 roll = rnd.random()
                 if won == 'home':
-                    if roll < 0.6:
+                    if roll < 0.6 * form:
                         touch(hitter, 'Attacco', '++', start=start, end=rnd.choice([1, 5, 6, 4, 2, 8, 9, 7]))
                         reason, cause = 'attack', 'Attacco ++'
                     elif roll < 0.75:
