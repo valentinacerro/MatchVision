@@ -95,6 +95,47 @@
 
         </div>
 
+        <!-- Phones: the top bar above is hidden, this compact one takes its place -->
+        <div class="phone-bar">
+            <div class="phone-score">
+                <div class="ps-team">
+                    <div class="ps-name">
+                        <button type="button" class="serve-toggle" [class.serving]="serving === 'home'" [disabled]="endSetClicked || locked"
+                            (click)="setServing('home')" aria-label="Batte CASA">🏐</button>CASA
+                    </div>
+                    <div class="ps-buttons">
+                        <button class="btn btn-secondary" [disabled]="endSetClicked || locked || !hasActiveSet" (click)="decreaseScore('home')" aria-label="Togli un punto a CASA">—</button>
+                        <button class="btn btn-secondary" [disabled]="endSetClicked || locked || !hasActiveSet" (click)="increaseScore('home')" aria-label="Punto CASA">+</button>
+                    </div>
+                </div>
+                <div class="ps-center">
+                    <div class="ps-set">SET {{ displayedSetNumber }}</div>
+                    <div class="ps-digits">{{ score.home }}<span>–</span>{{ score.guests }}</div>
+                    <div class="ps-counters">TO {{ leftTimeOuts }} · Cambi {{ changeCounter }}</div>
+                </div>
+                <div class="ps-team guests">
+                    <div class="ps-name">
+                        OSPITI<button type="button" class="serve-toggle" [class.serving]="serving === 'guests'" [disabled]="endSetClicked || locked"
+                            (click)="setServing('guests')" aria-label="Batte OSPITI">🏐</button>
+                    </div>
+                    <div class="ps-buttons">
+                        <button class="btn btn-secondary" [disabled]="endSetClicked || locked || !hasActiveSet" (click)="decreaseScore('guests')" aria-label="Togli un punto a OSPITI">—</button>
+                        <button class="btn btn-secondary" [disabled]="endSetClicked || locked || !hasActiveSet" (click)="increaseScore('guests')" aria-label="Punto OSPITI">+</button>
+                    </div>
+                </div>
+            </div>
+            <div class="phone-last">
+                <span class="ps-last">
+                    @if (touches.length > 0) { Ultimo: <strong>{{ lastTouchText }}</strong> }
+                </span>
+                @if (touches.length > 0) {
+                    <button type="button" class="del-touch-btn" [disabled]="!canUndo" (click)="undoLastTouch()">
+                        <img class="del-touch-img" src="/icons/del-last-action-icon.png" alt="Annulla l'ultimo tocco"></button>
+                }
+                <button type="button" class="btn btn-dark phone-menu-btn" [attr.aria-expanded]="phoneMenu" (click)="phoneMenu = !phoneMenu">Menu</button>
+            </div>
+        </div>
+
         <div class="play-area">
 
         <!-- Court -->
@@ -205,7 +246,11 @@
 
         <!-- bottom bar -->
 
-        <div class="d-flex justify-content-between align-items-center bottom-bar rounded-3 shadow-lg">
+        <!-- On phones this bar is a sheet opened by Menu; any command closes it -->
+        @if (phoneMenu) {
+            <div class="bottom-backdrop" (click)="phoneMenu = false"></div>
+        }
+        <div class="d-flex justify-content-between align-items-center bottom-bar rounded-3 shadow-lg" [class.open]="phoneMenu" (click)="phoneMenu = false">
             <button (click)="openPlayersDeploymentModal()" [disabled]="locked" class="btn btn-outline-light btn-lg">SCHIERA GIOCATORI</button>
             <button (click)="openNewEventModal()" [disabled]="locked || endSetClicked || !hasActiveSet" class="btn btn-outline-light btn-lg">REGISTRA EVENTO</button>
             <button (click)="openChangePlayersModal()" [disabled]="locked || endSetClicked || !hasActiveSet" class="btn btn-outline-light btn-lg">EFFETTUA UN CAMBIO</button>

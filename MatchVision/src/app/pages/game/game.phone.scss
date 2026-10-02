@@ -1,0 +1,255 @@
+// ---------------------------------------------------------------------------------------------
+// Phones (narrower than 600 px, or held sideways with less than 500 px of height): the tablet top bar
+// and command bar give way to a compact score line, a Menu for the commands and bigger players
+// ---------------------------------------------------------------------------------------------
+.phone-bar, .bottom-backdrop {
+    display: none;
+}
+
+@media (max-width: 600px), (max-height: 500px) and (orientation: landscape) {
+    .top-bar {
+        display: none !important;
+    }
+
+    .phone-bar {
+        display: block;
+        margin-bottom: 0.4rem;
+        background-color: #f7f7f7;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+        border-radius: 0 0 1rem 1rem;
+    }
+
+    .phone-score {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.3rem 0.6rem 0;
+    }
+
+    .ps-team {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.2rem;
+    }
+
+    .ps-team.guests {
+        align-items: flex-end;
+    }
+
+    .ps-name {
+        display: flex;
+        align-items: center;
+        font-weight: 600;
+    }
+
+    .ps-buttons {
+        display: flex;
+        gap: 0.35rem;
+
+        .btn {
+            min-width: 2.7rem;
+            min-height: 2.4rem;
+            padding: 0;
+        }
+    }
+
+    .ps-center {
+        text-align: center;
+    }
+
+    .ps-set {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #666;
+    }
+
+    .ps-digits {
+        font-family: 'Courier New', monospace;
+        font-size: 2.3rem;
+        font-weight: 700;
+        line-height: 1;
+        color: rgb(0, 72, 255);
+
+        span { margin: 0 0.15rem; color: black; }
+    }
+
+    .ps-counters {
+        font-size: 0.75rem;
+        color: #555;
+        white-space: nowrap;
+    }
+
+    .serve-toggle {
+        width: 2rem;
+        height: 2rem;
+        margin: 0 0.2rem;
+        font-size: 1rem;
+    }
+
+    .phone-last {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.3rem 0.6rem 0.4rem;
+    }
+
+    .ps-last {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.9rem;
+    }
+
+    .del-touch-img {
+        width: 2.3rem;
+    }
+
+    .phone-menu-btn {
+        min-height: 2.4rem;
+    }
+
+    .play-area {
+        flex-direction: column;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+        padding: 0 0.5rem;
+    }
+
+    .play-area .court-container {
+        width: 100%;
+        height: auto;
+        max-height: none;
+        border-width: 3px;
+        border-radius: 10px;
+    }
+
+    // At least 40 px: a finger, not a mouse
+    .player-icon {
+        width: 11%;
+        height: 22%;
+        font-size: 1.05rem;
+    }
+
+    .pad-column {
+        width: 100%;
+    }
+
+    .last-point {
+        height: 3.9rem;
+        padding: 0.3rem 0.5rem;
+        font-size: 0.85rem;
+    }
+
+    .reason-btn {
+        min-height: 2rem;
+    }
+
+    // Commands: hidden until Menu, then a sheet from the bottom
+    .bottom-bar {
+        display: none !important;
+    }
+
+    .bottom-bar.open {
+        display: grid !important;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 1600;
+        grid-template-columns: 1fr 1fr;
+        align-items: stretch !important; // same height on a row, even when a label wraps
+        gap: 0.5rem;
+        margin: 0;
+        padding: 1rem;
+        border-radius: 1rem 1rem 0 0 !important;
+
+        .btn {
+            width: 100%;
+            min-height: 3rem;
+            font-size: 0.95rem;
+        }
+    }
+
+    .bottom-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 1550;
+        background-color: rgba(0, 0, 0, 0.4);
+    }
+
+    // In the page, not over the pad or the court
+    .game-error {
+        position: static;
+        transform: none;
+        min-width: 0;
+        max-width: none;
+        margin: 0.4rem 0.5rem;
+    }
+}
+
+// Phones held sideways: score in one line; court and last point on the left, pad on the right
+@media (max-height: 500px) and (orientation: landscape) {
+    .phone-bar {
+        display: flex;
+        align-items: center;
+        border-radius: 0 0 0.8rem 0.8rem;
+    }
+
+    .phone-score {
+        flex: 1 1 auto;
+        padding: 0.2rem 0.6rem;
+    }
+
+    .ps-team, .ps-team.guests {
+        flex-direction: row;
+        align-items: center;
+    }
+
+    .ps-team.guests {
+        justify-content: flex-end;
+    }
+
+    .ps-digits {
+        font-size: 1.9rem;
+    }
+
+    .phone-last {
+        flex: 0 1 40%;
+        min-width: 0;
+        padding: 0.2rem 0.6rem;
+    }
+
+    .play-area {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: start;
+        gap: 0.4rem 0.6rem;
+    }
+
+    .pad-column {
+        display: contents;
+    }
+
+    // As tall as the screen allows (header, score line and last point above or below it)
+    .play-area .court-container {
+        grid-column: 1;
+        grid-row: 1;
+        width: min(100%, calc((100vh - 13.5rem) * 2));
+        justify-self: center;
+    }
+
+    .last-point {
+        grid-column: 1;
+        grid-row: 2;
+    }
+
+    app-touch-pad {
+        grid-column: 2;
+        grid-row: 1 / span 2;
+    }
+}

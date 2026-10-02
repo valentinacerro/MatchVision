@@ -160,3 +160,41 @@
     .hint { grid-area: hint; min-height: 1.2rem; }
     .stats-btn { grid-area: stats; }
 }
+
+// Phones: as wide as the screen when upright, STATISTICHE on the last line (the first one is full);
+// sideways, a compact pad next to the court
+@media (max-width: 600px) {
+    .touch-pad {
+        width: 100%;
+        grid-template-areas:
+            "header header"
+            "fundamentals fundamentals"
+            "grades grades"
+            "hint stats";
+    }
+
+    .stats-btn { padding: 0.2rem 0.6rem; font-size: 0.9rem; }
+    .fundamental-btn { padding-left: 0.2rem; padding-right: 0.2rem; }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+    .touch-pad {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        grid-template-areas:
+            "header stats"
+            "fundamentals fundamentals"
+            "grades grades";
+        gap: 0.4rem;
+        width: min(25rem, 46vw);
+        padding: 0.5rem;
+    }
+
+    .pad-header { grid-area: header; min-height: 0; }
+    .fundamentals { grid-area: fundamentals; }
+    .grades { grid-area: grades; }
+    .stats-btn { grid-area: stats; padding: 0.2rem 0.5rem; font-size: 0.85rem; }
+    .hint { display: none; }
+    .fundamental-btn { min-height: 2.5rem; padding-left: 0.2rem; padding-right: 0.2rem; font-size: 0.95rem; }
+    .grade-btn { min-height: 3.2rem; }
+}

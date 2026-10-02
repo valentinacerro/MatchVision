@@ -1,5 +1,7 @@
-    import { Component, signal } from '@angular/core'
-    import { RouterOutlet, RouterModule } from '@angular/router'
+    import { Component, inject, signal } from '@angular/core'
+    import { toSignal } from '@angular/core/rxjs-interop'
+    import { NavigationEnd, Router, RouterOutlet, RouterModule } from '@angular/router'
+    import { filter, map } from 'rxjs'
     import { FormsModule } from '@angular/forms'
 
     import { HeaderComponent } from './pages/header/header.component'
@@ -21,4 +23,11 @@
 
 export class App {
     protected readonly title = signal('MatchVision');
+    private router = inject(Router)
+
+    // The game screen uses the whole height (on phones the footer would cover the pad)
+    readonly inGame = toSignal(this.router.events.pipe(
+        filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+        map(e => e.urlAfterRedirects.startsWith('/game')),
+    ), { initialValue: location.pathname.startsWith('/game') })
 }

@@ -112,3 +112,17 @@
         margin-top: 0.75rem;
     }
 }
+
+// Phones: a thinner header, the account name only from the menu of the dashboard
+@media (max-width: 600px), (max-height: 500px) and (orientation: landscape) {
+    .app-header {
+        height: 44px;
+        padding: 0 10px;
+
+        .app-title { font-size: 1.05rem; margin: 0; }
+        .account { display: none; }
+        .install-btn { padding: 0.1rem 0.4rem; font-size: 0.8rem; }
+    }
+
+    .update-toast, .sync-panel { top: 50px; }
+}

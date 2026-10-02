@@ -111,7 +111,7 @@ function newClientId(): string {
         PlayersDeploymentModal
     ],
     templateUrl: './game.html',
-    styleUrls: ['./game.scss']
+    styleUrls: ['./game.scss', './game.phone.scss']
 })
 
 export class GameComponent implements OnInit, OnDestroy{
@@ -183,6 +183,7 @@ export class GameComponent implements OnInit, OnDestroy{
     // After a serve or an attack the opponent half can be tapped where the ball ended (optional):
     // the client id of that touch, until the scout taps it or goes on
     zonePrompt: string | null = null
+    phoneMenu: boolean = false // phones: the commands open from a Menu button, as a sheet from the bottom
     lastTarget: { left: number; top: number } | null = null // the tap just made, shown for a moment
     private targetTimer: any = null
 

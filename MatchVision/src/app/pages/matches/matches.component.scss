@@ -63,3 +63,7 @@ body{
 .btn-del-match-hidden {
     display: none;
 }
+@media (max-width: 600px) {
+    .btn-floating { right: 1rem; bottom: 4.5rem; }
+    .manage-matches { right: 4.5rem; }
+}
